@@ -1,0 +1,2 @@
+strategy,vs,d_sharpe,ci_low,ci_high,p_raw,p_holm,significant
+Tech+Regime,Tech-only,0.755983374856609,-0.1997800186009554,1.5710534291339293,0.1248,0.1248,False

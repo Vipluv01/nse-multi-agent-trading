@@ -1,0 +1,28 @@
+[project]
+name = "nse-agents"
+version = "0.1.0"
+description = "A multi-agent LLM framework for explainable algorithmic trading on NSE-listed equities"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "torch>=2.2",
+    "transformers>=4.44",
+    "matplotlib>=3.8",
+    "scipy>=1.13",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nse_agents"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
