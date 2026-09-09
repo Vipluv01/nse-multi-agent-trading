@@ -17,3 +17,7 @@ llm_cache/
 results/sentiment/scored_*.csv
 results/agents/decisions_*.csv
 results/technical/oos_*.csv
+
+# Live-pipeline output: date-specific and stale the next day, unlike the
+# study's static result tables above. Regenerate with run_live_signal.py.
+results/paper_trading/

@@ -110,13 +110,18 @@ agreement on the sampled subset would close this.
 
 ---
 
-## 6. Cost model uses the delivery schedule throughout
+## 6. Cost model uses the delivery schedule throughout — now checked, doesn't change the answer
 
 STT at 0.1% per side and 0.015% stamp duty on the buy are the **delivery** rates. A
 daily-rebalanced strategy holding overnight is genuinely delivery, so this is correct
-as specified — but it is the conservative end. An intraday variant (0.025% STT,
-sell-side only) would roughly halve the cost drag and is a one-line change in
-`CostModel`. The conclusions are stated against the delivery schedule.
+as specified — but it is the conservative end.
+
+**Checked with `scripts/cost_sensitivity.py`**: under the intraday schedule (0.025% STT,
+sell-side only; ~14 bps round-trip vs delivery's 32), cost drag falls roughly in half
+across every strategy — MeanReversion's Sharpe improves from **−1.41 to −0.20**, the
+largest move in the study. But every strategy, including that one, still fails to beat
+Buy&Hold after Holm correction. The delivery schedule was conservative but not
+load-bearing for the conclusion: it wasn't hiding an edge.
 
 ---
 
@@ -179,3 +184,39 @@ more crash regimes than the one available here (82 days is not enough to say any
 statistically about the crash regime specifically -- see `scripts/regime_analysis.py`,
 which deliberately reports cumulative return and drawdown rather than a bootstrapped
 Sharpe for that regime, to avoid manufacturing false precision on ~80 data points).
+
+---
+
+## 9. The live pipeline caught two more real bugs before its first real run
+
+Building `scripts/run_live_signal.py` (technical, regime, sentiment, debate and a
+cost-aware risk gate against real, current data) surfaced two defects the walk-forward
+study's own test suite never could, because both only manifest for inputs the study
+never produced:
+
+- **`TechnicalAgent` crashed on a `None` attention value.** The walk-forward study's
+  default `TrainConfig` always has `attention=True`, so `attn_recent5` was always a real
+  float or NaN in every OOS CSV the study ever produced. The live pipeline's production
+  model deliberately uses the *empirically best* architecture (plain LSTM, no attention
+  module), so `attn_recent5` is `None` — a case the code's `x == x` NaN check silently
+  never handled, since `None == None` is `True` in Python and the check then tried
+  `float(None)`. Two occurrences (the rationale string and the evidence dict) both
+  crashed identically. Fixed with a real `has_attention` check; regression-tested for
+  both `None` and `NaN`.
+- **The rationale hardcoded "PLSTM-TAL" regardless of which architecture actually ran.**
+  A cosmetic-looking bug with a real-accuracy consequence: the live pipeline's plain-LSTM
+  predictions were being narrated as coming from PLSTM-TAL, which is false. `TechnicalAgent`
+  now takes an `architecture` label and the live script passes the checkpoint's real one.
+- **`ckpt.save()` hardcoded the module-level `FEATURE_COLUMNS` constant** rather than
+  recording whatever feature set the model was actually built with. Caught by a test
+  training a small toy model with a different input width — a real defect (a checkpoint
+  trained on a custom feature subset would have silently claimed the wrong input shape at
+  load time), not a test-only edge case, and now enforced with a dimension check at save
+  time.
+
+**Not yet resolved:** the hosted Anthropic/OpenAI `classify_batch` implementations are
+implemented against the documented structured-output contracts and unit-tested with
+mocked responses, but have never been run against a live API (no key in this
+environment) — a genuine end-to-end run could still surface something the mocks don't
+capture, the same way the two bugs above only surfaced once real, non-walk-forward data
+was pushed through the pipeline.

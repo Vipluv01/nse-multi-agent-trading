@@ -24,21 +24,42 @@ from ..config import BENCHMARK, SETTINGS
 from ..data.prices import load_prices
 from .base import Opinion
 
+INDIA_VIX = "^INDIAVIX"
+
+
+def _load_macro_series(start: str, end: str) -> pd.DataFrame:
+    """India VIX and Nifty momentum, causal, forward-filled across non-trading gaps.
+
+    Both are optional in the sense that a missing VIX history (e.g. a very early
+    start date, before the index existed) degrades gracefully to NaN rather than
+    raising -- the agent already treats NaN regime inputs as an abstention.
+    """
+    nifty = load_prices(BENCHMARK, start, end)[["date", "close"]].rename(columns={"close": "nifty"})
+    nifty["nifty_mom_20d"] = nifty["nifty"].pct_change(20)
+
+    try:
+        vix = load_prices(INDIA_VIX, start, end)[["date", "close"]].rename(columns={"close": "vix"})
+        vix["vix_percentile"] = vix["vix"].rolling(252, min_periods=60).rank(pct=True)
+    except Exception:
+        vix = pd.DataFrame(columns=["date", "vix", "vix_percentile"])
+
+    return nifty.merge(vix, on="date", how="left")
+
 
 def build_regime_table(
     symbols: tuple[str, ...] = SETTINGS.universe,
     start: str = SETTINGS.start,
     end: str = SETTINGS.end,
 ) -> pd.DataFrame:
-    """Causal regime features per (symbol, date)."""
-    index = load_prices(BENCHMARK, start, end)[["date", "close"]].rename(
-        columns={"close": "nifty"}
-    )
+    """Causal regime features per (symbol, date), including market-wide macro state."""
+    macro = _load_macro_series(start, end)
     frames = []
     for symbol in symbols:
         frame = load_prices(symbol, start, end)[["date", "close", "high", "low"]].copy()
-        frame = frame.merge(index, on="date", how="left")
-        frame["nifty"] = frame["nifty"].ffill()
+        frame = frame.merge(macro, on="date", how="left")
+        frame[["nifty", "nifty_mom_20d", "vix", "vix_percentile"]] = (
+            frame[["nifty", "nifty_mom_20d", "vix", "vix_percentile"]].ffill()
+        )
 
         close = frame["close"]
         frame["trend"] = np.sign(close / close.rolling(200).mean() - 1.0)
@@ -59,10 +80,19 @@ def build_regime_table(
 class RegimeAgent:
     name = "regime"
 
-    def __init__(self, table: pd.DataFrame):
+    def __init__(self, table: pd.DataFrame, use_macro: bool = False):
+        """``use_macro`` gates the Nifty-momentum vote and the VIX confidence
+        penalty. It defaults to False so every number already published in
+        README.md -- all computed before these macro features existed --
+        stays exactly reproducible from a plain checkout: re-running the study
+        scripts must never silently produce different numbers than what is
+        reported. The live pipeline (scripts/run_live_signal.py) is the one
+        caller that passes True.
+        """
         frame = table.copy()
         frame["date"] = pd.to_datetime(frame["date"])
         self._lookup = frame.set_index(["symbol", "date"]).sort_index()
+        self.use_macro = use_macro
 
     def opine(self, symbol: str, date: pd.Timestamp) -> Opinion:
         try:
@@ -76,25 +106,49 @@ class RegimeAgent:
         rel = row["rel_strength_60d"]
         pos = row["pos_52w"]
         vol_pct = row["vol_percentile"]
+        nifty_mom = row.get("nifty_mom_20d", np.nan) if self.use_macro else np.nan
+        vix_pct = row.get("vix_percentile", np.nan) if self.use_macro else np.nan
         if any(pd.isna(v) for v in (trend, rel, pos)):
             return Opinion.abstain(self.name, "insufficient history for a regime read")
 
-        # Three equally-weighted votes: long-term trend, relative strength,
-        # and range position. Deliberately simple; a tuned weighting here would
-        # be one more parameter fitted to the same test period.
+        # Equally-weighted votes: long-term trend, relative strength, range
+        # position, and -- when available -- the broad market's own 20-day
+        # momentum. Deliberately simple and unweighted; a tuned weighting here
+        # would be one more parameter fitted to the same test period. The
+        # market-momentum vote is distinct from "trend": trend asks whether
+        # this stock is above its own 200-day average, nifty_mom asks whether
+        # the whole market is currently moving, which a single-name signal
+        # cannot see on its own.
         votes = [
             float(trend),
             float(np.clip(rel * 5.0, -1.0, 1.0)),
             float(np.clip((pos - 0.5) * 2.0, -1.0, 1.0)),
         ]
+        if not pd.isna(nifty_mom):
+            votes.append(float(np.clip(nifty_mom * 8.0, -1.0, 1.0)))
         stance = float(np.clip(np.mean(votes), -1.0, 1.0))
 
         # High-volatility regimes are where these medium-term signals are least
         # reliable, so confidence is cut rather than the stance being flipped.
+        # Two independent fear gauges compound here: the stock's own realised
+        # volatility percentile, and India VIX's percentile (market-wide,
+        # forward-looking implied vol) -- a stock can be individually calm
+        # while the whole market is pricing in fear, and vice versa, so
+        # neither penalty alone captures what the other does.
         vol_penalty = 1.0 if pd.isna(vol_pct) else float(1.0 - 0.5 * vol_pct)
+        vix_penalty = 1.0 if pd.isna(vix_pct) else float(1.0 - 0.4 * vix_pct)
         agreement = 1.0 - float(np.std(votes))
-        confidence = float(np.clip(max(agreement, 0.0) * vol_penalty, 0.0, 1.0))
+        confidence = float(np.clip(max(agreement, 0.0) * vol_penalty * vix_penalty, 0.0, 1.0))
 
+        mom_clause = (
+            f", while the Nifty itself is {'up' if nifty_mom > 0 else 'down'} "
+            f"{abs(nifty_mom):.1%} over 20 sessions"
+            if not pd.isna(nifty_mom) else ""
+        )
+        vix_clause = (
+            f"; India VIX sits in the {vix_pct:.0%} percentile"
+            if not pd.isna(vix_pct) else ""
+        )
         return Opinion(
             agent=self.name,
             stance=stance,
@@ -104,12 +158,14 @@ class RegimeAgent:
                 f"{rel:+.1%} vs the Nifty over 60 sessions, and sits at the "
                 f"{pos:.0%} mark of its 52-week range"
                 + ("" if pd.isna(vol_pct) else f" with volatility in the {vol_pct:.0%} percentile")
-                + "."
+                + mom_clause + vix_clause + "."
             ),
             evidence={
                 "trend": float(trend),
                 "rel_strength_60d": float(rel),
                 "pos_52w": float(pos),
                 "vol_percentile": None if pd.isna(vol_pct) else float(vol_pct),
+                "nifty_mom_20d": None if pd.isna(nifty_mom) else float(nifty_mom),
+                "vix_percentile": None if pd.isna(vix_pct) else float(vix_pct),
             },
         )

@@ -383,3 +383,104 @@ def test_conviction_gate_weights_by_confidence():
     )
     unsure = [Opinion("technical", 0.9, 0.05, ""), Opinion("regime", -0.9, 0.05, "")]
     assert not orch._needs_debate(unsure)
+
+
+def test_regime_agent_default_ignores_macro_features():
+    """use_macro defaults to False so every published README number stays
+    reproducible -- adding VIX/momentum must not silently change old results."""
+    dates = pd.date_range("2020-01-01", periods=1, freq="D")
+    table = pd.DataFrame({
+        "symbol": ["X"], "date": dates,
+        "trend": [1.0], "rel_strength_60d": [0.1], "pos_52w": [0.9],
+        "vol_percentile": [0.5],
+        "nifty_mom_20d": [0.5], "vix_percentile": [0.9],  # deliberately extreme
+    })
+    from nse_agents.agents.regime import RegimeAgent
+
+    default = RegimeAgent(table).opine("X", dates[0])
+    macro = RegimeAgent(table, use_macro=True).opine("X", dates[0])
+    assert default.stance != macro.stance or default.confidence != macro.confidence
+    assert "VIX" not in default.rationale
+    assert "VIX" in macro.rationale
+
+
+def test_regime_agent_macro_mode_degrades_gracefully_without_macro_columns():
+    """A table built before macro columns existed must not crash use_macro=True."""
+    from nse_agents.agents.regime import RegimeAgent
+
+    dates = pd.date_range("2020-01-01", periods=1, freq="D")
+    table = pd.DataFrame({
+        "symbol": ["X"], "date": dates,
+        "trend": [1.0], "rel_strength_60d": [0.1], "pos_52w": [0.9],
+        "vol_percentile": [0.5],
+    })
+    opinion = RegimeAgent(table, use_macro=True).opine("X", dates[0])
+    assert not opinion.abstained
+
+
+def test_cost_aware_gate_is_off_by_default():
+    """Every published backtest number was computed without this filter."""
+    from nse_agents.agents.risk import RiskLimits
+    assert RiskLimits().cost_aware is False
+
+
+def test_cost_aware_gate_suppresses_edges_that_cannot_clear_round_trip_cost():
+    from nse_agents.agents.risk import RiskManager, RiskLimits, RiskState
+
+    manager = RiskManager(RiskLimits(cost_aware=True))
+    weight, notes = manager.size(0.05, 0.15, 0.25, RiskState())
+    assert weight == 0.0
+    assert "does not clear" in notes[0]
+
+
+def test_cost_aware_gate_still_allows_a_strongly_convicted_signal():
+    from nse_agents.agents.risk import RiskManager, RiskLimits, RiskState
+
+    manager = RiskManager(RiskLimits(cost_aware=True))
+    weight, _ = manager.size(0.9, 0.9, 0.15, RiskState())
+    assert weight > 0.0
+
+
+def test_cost_aware_gate_matches_default_sizing_when_edge_clears_by_far():
+    """When the gate passes, sizing downstream must be identical to the
+    non-cost-aware path -- the gate only refuses trades, never resizes them."""
+    from nse_agents.agents.risk import RiskManager, RiskLimits, RiskState
+
+    plain = RiskManager(RiskLimits(cost_aware=False)).size(0.9, 0.9, 0.15, RiskState())
+    gated = RiskManager(RiskLimits(cost_aware=True)).size(0.9, 0.9, 0.15, RiskState())
+    assert plain[0] == pytest.approx(gated[0])
+
+
+def test_technical_agent_handles_none_attention_not_just_nan():
+    """Regression: a no-attention architecture (production LSTM) stores None,
+    not NaN, and the old `x == x` NaN check silently assumed only NaN could
+    occur -- crashing on float(None) the first time a live run used a plain
+    LSTM checkpoint."""
+    oos = pd.DataFrame(
+        {"date": pd.to_datetime(["2024-01-02"]), "symbol": ["RELIANCE"],
+         "prob_up": [0.6], "attn_recent5": [None]}
+    )
+    opinion = TechnicalAgent(oos).opine("RELIANCE", pd.Timestamp("2024-01-02"))
+    assert not opinion.abstained
+    assert "attention" not in opinion.rationale.lower()
+
+
+def test_technical_agent_still_handles_nan_attention():
+    import numpy as np
+
+    oos = pd.DataFrame(
+        {"date": pd.to_datetime(["2024-01-02"]), "symbol": ["RELIANCE"],
+         "prob_up": [0.6], "attn_recent5": [np.nan]}
+    )
+    opinion = TechnicalAgent(oos).opine("RELIANCE", pd.Timestamp("2024-01-02"))
+    assert not opinion.abstained
+    assert "attention" not in opinion.rationale.lower()
+
+
+def test_technical_agent_reports_attention_when_present():
+    oos = pd.DataFrame(
+        {"date": pd.to_datetime(["2024-01-02"]), "symbol": ["RELIANCE"],
+         "prob_up": [0.6], "attn_recent5": [0.42]}
+    )
+    opinion = TechnicalAgent(oos).opine("RELIANCE", pd.Timestamp("2024-01-02"))
+    assert "42%" in opinion.rationale
