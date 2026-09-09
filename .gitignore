@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+logs/
+
+# Caches: regenerable, and large. Prices and headlines re-fetch from the
+# network; LLM responses re-score from the local model.
+data_cache/
+llm_cache/
+*.pt
+
+# Result tables and figures ARE committed -- the README embeds the figures and
+# the tables are the study's output. Only the bulky per-headline scores and the
+# per-decision dumps are excluded.
+results/sentiment/scored_*.csv
+results/agents/decisions_*.csv
+results/technical/oos_*.csv
