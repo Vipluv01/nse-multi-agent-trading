@@ -17,10 +17,14 @@ def build_backend(kind: str = "local", cache: bool = True, **kwargs) -> LLMBacke
         from .anthropic_backend import AnthropicBackend
 
         backend = AnthropicBackend(**kwargs)
+    elif kind == "openai":
+        from .openai_backend import OpenAIBackend
+
+        backend = OpenAIBackend(**kwargs)
     elif kind == "echo":
         backend = EchoBackend(**kwargs)
     else:
-        raise ValueError(f"unknown backend {kind!r}; expected local|anthropic|echo")
+        raise ValueError(f"unknown backend {kind!r}; expected local|anthropic|openai|echo")
     return CachedBackend(backend) if cache else backend
 
 
@@ -28,5 +32,6 @@ def available_backends() -> dict[str, bool]:
     return {
         "local": True,
         "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "openai": bool(os.environ.get("OPENAI_API_KEY")),
         "echo": True,
     }

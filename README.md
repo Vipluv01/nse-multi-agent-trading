@@ -17,6 +17,7 @@ Deflated Sharpe Ratio that charges the result for every configuration searched.
 - [Results](#results)
 - [Does the null hold across market regimes?](#does-the-null-hold-across-market-regimes)
 - [How to reproduce](#how-to-reproduce)
+- [Live pipeline: the same agents, running on real data today](#live-pipeline-the-same-agents-running-on-real-data-today)
 - [Architecture](#architecture)
 - [How correctness is verified](#how-correctness-is-verified)
 - [Threats to validity](#threats-to-validity)
@@ -368,6 +369,71 @@ export ANTHROPIC_API_KEY=...
 
 Everything is cached — prices to CSV, headlines to JSONL, LLM responses to SQLite — so
 re-runs are deterministic and cost nothing.
+
+---
+
+## Live pipeline: the same agents, running on real data today
+
+Everything above is backtesting. This section adds a genuinely different capability:
+the full agent pipeline -- technical model, regime agent (with India VIX and Nifty
+momentum), sentiment agent, bull/bear debate, and a cost-aware risk manager -- running
+end to end against **today's real prices and today's real headlines**, producing the
+same structured, auditable decision the backtest produces.
+
+**This is a demonstration that the system runs live, not a new evaluation and not a
+trading recommendation.** The production model has no held-out accuracy of its own --
+there is no future to hold out for a prediction about today, since today's outcome
+doesn't exist yet. Its expected performance is exactly what the walk-forward study
+already measured for its architecture (plain LSTM, 50.45% OOS accuracy, indistinguishable
+from chance). Every output from this pipeline carries that disclaimer.
+
+```bash
+.venv/bin/python scripts/train_production_model.py   # once, or whenever retraining
+.venv/bin/python scripts/run_live_signal.py --backend local
+```
+
+Sample output, run against real NSE data on 2026-09-08:
+
+```
+symbol       action   score    size
+----------------------------------------
+TCS          BUY     +0.354   0.200
+LT           BUY     +0.301   0.200
+RELIANCE     BUY     +0.193   0.200
+ICICIBANK    BUY     +0.129   0.200
+...
+```
+
+Each decision carries the full rationale, exactly as in the backtest -- e.g. TCS's
+actual output that day: *"[technical +0.01] LSTM assigns P(up)=0.505... [regime -0.41]
+TCS is below its 200-day average... while the Nifty itself is down 2.8% over 20
+sessions; India VIX sits in the 24% percentile. [sentiment +1.00] 17 headline(s) for
+TCS; mean tone +0.554 (positive)... [debate] bull case Strong (0.71) vs bear case None
+(0.11); net +0.60."*
+
+**Two design decisions this pipeline enforces, both opt-in so they cannot silently
+change any number already reported above:**
+
+- **Cost-aware sizing** (`RiskLimits.cost_aware`, default off): refuses a position
+  unless the estimated edge -- score x confidence x the stock's own typical daily
+  move -- clears the real round-trip transaction cost. A heuristic, stated as one; this
+  project's whole finding is that these scores carry ~0 real predictive edge, so a
+  calibrated bps forecast from them would be invented precision.
+- **Macro regime features** (`RegimeAgent(use_macro=True)`, default off): India VIX
+  percentile and Nifty 20-day momentum, added as a confidence penalty and a fourth vote
+  respectively. Free via Yahoo; FII/DII institutional flow data was investigated and has
+  no reliable free source (NSE's endpoint returns 403 without more session engineering).
+
+**Hosted-LLM backends beyond the local model** (`--backend anthropic` / `--backend openai`,
+both use structured tool-calling / JSON-schema output so a stance's confidence cannot be
+generated independently of its stated reasoning) are implemented and unit-tested against
+the documented API contracts, but unverified end-to-end -- this environment has no API
+key for either. They activate the moment one is supplied.
+
+An **intraday cost-sensitivity check** (`scripts/cost_sensitivity.py`) reruns the key
+strategies under the intraday cost schedule (~14 bps round-trip vs delivery's 32) as a
+labelled sensitivity check: MeanReversion's catastrophic -1.41 Sharpe improves to -0.20,
+but every strategy, including that one, still fails to beat Buy&Hold.
 
 ---
 

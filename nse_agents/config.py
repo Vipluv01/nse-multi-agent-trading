@@ -81,6 +81,24 @@ class CostModel:
         """Round-number cost in basis points, for reporting."""
         return self.cost(1_000_000.0, side) / 1_000_000.0 * 1e4
 
+    @classmethod
+    def intraday(cls) -> "CostModel":
+        """The intraday-equity cost schedule, for sensitivity analysis only.
+
+        Every result reported in README.md uses the *delivery* schedule
+        (the default constructor), because every strategy in this study rebalances
+        daily and holds overnight, which is genuinely delivery. Intraday STT is
+        lower (0.025% vs 0.1%, sell side only) and intraday stamp duty is lower
+        (0.003% vs 0.015%, buy side), which roughly halves round-trip cost -- see
+        KNOWN_ISSUES.md. Reported as a labelled sensitivity check, never as a
+        substitute for the delivery numbers the study's own trades actually incur.
+        """
+        return cls(
+            stt_buy=0.0,             # intraday STT is sell-side only
+            stt_sell=0.00025,
+            stamp_duty_buy=0.00003,
+        )
+
 
 @dataclass(frozen=True)
 class WalkForward:
