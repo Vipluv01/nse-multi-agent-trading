@@ -127,6 +127,47 @@ def aggregate_daily(scored: pd.DataFrame, min_headlines: int = 1) -> pd.DataFram
     return grouped[grouped["n_headlines"] >= min_headlines].reset_index(drop=True)
 
 
+def debias_daily(
+    daily: pd.DataFrame, method: str = "none", trailing_window: int = 60
+) -> pd.DataFrame:
+    """Remove the model's own prior from the aggregated sentiment score.
+
+    The 1.5B backend scores P(Good)=0.458 against P(Bad)=0.154 across the whole
+    corpus -- a near-constant bullish offset that has nothing to do with any
+    particular headline. Left in, it makes the agent's stance track *coverage
+    volume* rather than tone, which is what drove the 123.9x turnover in the
+    Tech+Sentiment ablation.
+
+    Both corrections are causal:
+
+    * ``cross_sectional`` subtracts the mean sentiment across the symbols
+      covered on that same day. Every one of those headlines is already
+      published by the decision point, so this uses no future information; it
+      converts an absolute score into "positive *relative to* today's news".
+    * ``trailing`` subtracts a per-symbol rolling mean that is shifted by one
+      day, so a symbol's own baseline coverage tone is estimated only from days
+      strictly before the decision.
+    """
+    if method == "none":
+        return daily
+
+    frame = daily.sort_values(["symbol", "date"]).copy()
+
+    if method in ("trailing", "both"):
+        baseline = (
+            frame.groupby("symbol")["sentiment"]
+            .transform(lambda s: s.rolling(trailing_window, min_periods=10).mean().shift(1))
+        )
+        # Before a baseline exists, fall back to the global prior rather than
+        # to zero -- zero would assert neutrality the model never expressed.
+        frame["sentiment"] = frame["sentiment"] - baseline.fillna(frame["sentiment"].expanding().mean().shift(1)).fillna(0.0)
+
+    if method in ("cross_sectional", "both"):
+        frame["sentiment"] = frame["sentiment"] - frame.groupby("date")["sentiment"].transform("mean")
+
+    return frame.reset_index(drop=True)
+
+
 class SentimentAgent:
     name = "sentiment"
 

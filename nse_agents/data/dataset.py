@@ -46,7 +46,20 @@ def build_panel_dataset(
     end: str = SETTINGS.end,
     lookback: int = 30,
     horizon: int = SETTINGS.horizon_days,
+    label: str = "absolute",
 ) -> PanelDataset:
+    """Build the pooled sequence dataset.
+
+    ``label`` selects what the model is asked to predict:
+
+    * ``absolute`` -- did this stock rise? This is dominated by the market
+      factor: on a day the Nifty gains 1%, almost every name is up, and no
+      per-name technical feature can predict that common component.
+    * ``cross_sectional`` -- did this stock beat the median stock *that day*?
+      The common factor cancels by construction, so the label isolates the only
+      thing a per-name feature could plausibly know. Roughly 50% positive by
+      definition, which also removes the mild class imbalance.
+    """
     xs, ys, rs, ds, ss = [], [], [], [], []
     for symbol in symbols:
         frame = build_features(load_prices(symbol, start, end))
@@ -65,6 +78,16 @@ def build_panel_dataset(
     r = np.concatenate(rs)
     dates = pd.DatetimeIndex(np.concatenate([d.to_numpy() for d in ds]))
     syms = np.concatenate(ss)
+
+    if label == "cross_sectional":
+        # Demean the forward return across the names trading that day, then
+        # re-derive the binary label from the residual. Uses only same-day
+        # outcomes, so it changes what is predicted, not when it is known.
+        frame = pd.DataFrame({"date": dates, "r": r})
+        median = frame.groupby("date")["r"].transform("median")
+        y = (r > median.to_numpy()).astype(np.float32)
+    elif label != "absolute":
+        raise ValueError(f"unknown label {label!r}; expected absolute|cross_sectional")
 
     # Stable sort by date keeps symbols in a deterministic order within a day.
     order = np.argsort(dates.to_numpy(), kind="stable")

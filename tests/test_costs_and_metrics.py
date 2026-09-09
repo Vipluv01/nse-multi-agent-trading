@@ -134,3 +134,22 @@ def test_gross_cap_is_a_no_op_below_the_limit():
     manager = RiskManager(RiskLimits(max_gross_exposure=1.0))
     sized = [(0.2, []), (0.3, [])]
     assert manager.apply_gross_cap(sized) == sized
+
+
+def test_annualisation_respects_the_rebalancing_frequency():
+    """Annualising 20-day returns with sqrt(252) inflates Sharpe by ~4.5x."""
+    rng = np.random.default_rng(4)
+    periodic = rng.normal(0.004, 0.03, 400)          # 400 non-overlapping 20-day periods
+    wrong = sharpe_ratio(periodic, 0.0, periods_per_year=252)
+    right = sharpe_ratio(periodic, 0.0, periods_per_year=252 / 20)
+    assert wrong > right
+    assert wrong / right == pytest.approx(np.sqrt(20), rel=1e-6)
+
+
+def test_cagr_uses_the_right_number_of_years():
+    """252 weekly bars is ~5 years, not 1 -- CAGR must not be inflated 5x."""
+    returns = np.full(252, 0.002)
+    fast = compute_performance(returns, periods_per_year=252)
+    slow = compute_performance(returns, periods_per_year=252 / 5)
+    assert fast.cagr > slow.cagr
+    assert slow.n_days == fast.n_days == 252

@@ -58,20 +58,45 @@ against a point-in-time archive for a single year would bound it.
 
 ---
 
-## 4. The disagreement gate does not discriminate
+## 4. The disagreement gate did not discriminate — diagnosed wrongly at first, now fixed
 
-`debate_mode="disagreement"` was meant to escalate only contested days, mirroring a desk
-that does not send consensus calls to committee. **In practice it escalates 97.4% of
-days (18,610 of 19,110)**, so it is behaving as `always` at ~2× the intended cost.
+`debate_mode="disagreement"` was meant to escalate only contested days. It escalated
+**97.4%** of them (18,610 of 19,110).
 
-The cause is a scale mismatch, not a threshold that is merely too low: the technical
-agent's stance is `2·P(up) − 1` with P(up) ≈ 0.50, so its stances cluster within ±0.05,
-while the regime agent's votes span the full ±1. Any pair drawn from those two
-distributions almost always spans more than the 0.30 threshold.
+**The first diagnosis in this file was wrong.** It blamed a scale mismatch — the
+technical agent's stances span ±0.05 while the regime agent's span ±1 — and proposed
+z-scoring each agent against its own trailing distribution. That was implemented and
+measured: it moved escalation only from 97.4% to **91.3%**.
 
-The fix is to compare agents on a common scale — z-scoring each agent's stance against
-its own historical distribution before measuring spread — rather than to raise the
-threshold, which would just move the arbitrary cut. Not yet implemented.
+Decomposing the gate showed why:
+
+| Trigger | Share of all decisions |
+|---|---|
+| Stances straddle zero | **69.5%** |
+| Wide spread only | 27.9% |
+| Not escalated | 2.6% |
+
+The dominant trigger is **sign disagreement**, which z-scoring cannot touch — it rescales
+stances but does not move them across zero. And sign disagreement is exactly what near-
+zero, roughly symmetric stances produce by chance: two such agents land on opposite sides
+of zero about half the time, and with a mean of 2.59 active agents that reaches ~70%. The
+gate was faithfully detecting noise disagreeing with noise.
+
+**The fix that worked** is to gate on *conviction* rather than sign: escalate only when
+one agent holds a confidence-weighted stance above `+floor` and another below `-floor`.
+
+| Gate | Escalation rate |
+|---|---|
+| raw (original) | 97.4% |
+| zscore (first attempt) | 91.3% |
+| **conviction, floor 0.10** | **10.6%** |
+| conviction, floor 0.20 | 2.2% |
+| conviction, floor 0.30 | 0.7% |
+
+At floor 0.10 the debate pass costs ~9x less and fires only where two agents genuinely
+hold opposing views. Available as `disagreement_metric="conviction"`. **The headline
+results were produced with the original `raw` gate**, so they are unaffected; the
+conviction gate changes cost, not any reported number.
 
 ---
 
@@ -92,3 +117,47 @@ daily-rebalanced strategy holding overnight is genuinely delivery, so this is co
 as specified — but it is the conservative end. An intraday variant (0.025% STT,
 sell-side only) would roughly halve the cost drag and is a one-line change in
 `CostModel`. The conclusions are stated against the delivery schedule.
+
+---
+
+## 7. A real bug was caught mid-analysis: bootstrap CIs used the wrong annualisation for horizon > 1
+
+While running the pre-registered improvement attempts (B1/B2/C1, E1/E2 -- see
+`PREREGISTRATION.md`), `block_bootstrap_sharpe` and `paired_sharpe_difference` were found
+to default to `periods_per_year=252` regardless of what the point estimate (via
+`compute_performance`) had been annualised with. For a 20-day-horizon backtest this means
+the CI was computed at daily annualisation while the headline Sharpe was computed
+correctly at `252/20` -- two different scales combined into one printed line.
+
+**This was caught, not shipped, because of an internal consistency check**: the CI's own
+lower bound sat *above* its point estimate, which is not supposed to happen. That
+shouldn't-happen observation is what triggered the investigation.
+
+**Before the fix**, the buggy numbers looked like the first real positive result in the
+whole study:
+
+| Variant | Sharpe (own CI, buggy) | Verdict looked like |
+|---|---|---|
+| E2 GBM cross-sectional h=5, wide universe | 0.420, CI **[+0.02, +3.32]** | CI excludes zero |
+| E2b GBM cross-sectional h=20, wide universe | 0.589, CI **[+0.74, +8.50]** | CI excludes zero |
+
+**After the fix** (`periods_per_year` threaded through correctly):
+
+| Variant | Sharpe (own CI, fixed) | Verdict |
+|---|---|---|
+| E2 GBM cross-sectional h=5, wide universe | 0.420, CI **[-0.25, +1.19]** | Crosses zero -- noise |
+| E2b GBM cross-sectional h=20, wide universe | 0.589, CI **[-0.10, +1.52]** | Crosses zero -- noise |
+
+The point estimates did not change (they were already correctly annualised via
+`compute_performance`); only the interval did. What looked like "the first strategy in
+the study with a statistically real positive Sharpe" was a units mismatch. Both variants
+also still lose to Buy&Hold on the paired test (p=0.007 and p=0.143 respectively).
+
+**Fixed in `nse_agents/backtest/stats.py`**, with a regression test
+(`test_bootstrap_ci_uses_the_same_annualisation_as_its_own_point_estimate`) that asserts
+the CI's point equals an independently-computed Sharpe at the same `periods_per_year`,
+and that the wrong default measurably shifts it. See git history for the fix.
+
+**Why this belongs in the write-up, not just the commit log:** it is the single clearest
+demonstration in this project that internal consistency checks catch real errors before
+they become false claims -- exactly the discipline the pre-registration exists to protect.

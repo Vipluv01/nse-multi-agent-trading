@@ -41,10 +41,26 @@ class BacktestResult:
     def dates(self) -> pd.DatetimeIndex:
         return pd.DatetimeIndex(self.daily["date"])
 
+    periods_per_year: float = TRADING_DAYS
+
     def cost_drag_annual(self) -> float:
         """Annualised return given up to costs -- the number that decides
-        whether a daily-rebalanced signal is tradeable at all."""
-        return float(self.daily["cost"].mean() * TRADING_DAYS)
+        whether a signal is tradeable at all."""
+        return float(self.daily["cost"].mean() * self.periods_per_year)
+
+
+def subsample_periods(frame: pd.DataFrame, horizon: int) -> pd.DataFrame:
+    """Keep every h-th session so non-daily holding periods do not overlap.
+
+    Shared by every horizon-aware script (improve_horizon.py, improve_gbm.py,
+    power_analysis.py) so a change to the subsampling rule can't silently
+    diverge between them.
+    """
+    if horizon <= 1:
+        return frame
+    sessions = np.array(sorted(frame["date"].unique()))
+    keep = set(sessions[::horizon])
+    return frame[frame["date"].isin(keep)].reset_index(drop=True)
 
 
 def signals_to_weights(
@@ -75,6 +91,7 @@ def run_backtest(
     costs: CostModel = SETTINGS.costs,
     risk_free_annual: float = RISK_FREE_ANNUAL,
     return_column: str = "fwd_ret",
+    periods_per_year: float = TRADING_DAYS,
 ) -> BacktestResult:
     """Aggregate per-name weights and forward returns into a portfolio track."""
     frame = weighted.sort_values(["date", "symbol"]).copy()
@@ -85,10 +102,10 @@ def run_backtest(
     weights = pivot_w.to_numpy(dtype=float)
     rets = np.nan_to_num(pivot_r.to_numpy(dtype=float))
 
-    daily_rf = (1.0 + risk_free_annual) ** (1.0 / TRADING_DAYS) - 1.0
+    period_rf = (1.0 + risk_free_annual) ** (1.0 / periods_per_year) - 1.0
     invested = weights.sum(axis=1)
     cash = np.clip(1.0 - invested, 0.0, None)
-    gross = (weights * rets).sum(axis=1) + cash * daily_rf
+    gross = (weights * rets).sum(axis=1) + cash * period_rf
 
     # Turnover: compare each day's target weights with the previous day's, per
     # name, so a name held flat across days is not charged twice.
@@ -114,9 +131,12 @@ def run_backtest(
     )
     return BacktestResult(
         name=name,
+        periods_per_year=periods_per_year,
         daily=daily,
-        performance=compute_performance(net, daily["turnover"].to_numpy(), invested, risk_free_annual),
-        performance_gross=compute_performance(gross, daily["turnover"].to_numpy(), invested, risk_free_annual),
+        performance=compute_performance(
+            net, daily["turnover"].to_numpy(), invested, risk_free_annual, periods_per_year),
+        performance_gross=compute_performance(
+            gross, daily["turnover"].to_numpy(), invested, risk_free_annual, periods_per_year),
     )
 
 
@@ -127,9 +147,10 @@ def backtest_signals(
     score_column: str = "prob_up",
     costs: CostModel = SETTINGS.costs,
     max_weight: float = SETTINGS.max_weight_per_name,
+    periods_per_year: float = TRADING_DAYS,
 ) -> BacktestResult:
     weighted = signals_to_weights(signals, threshold, max_weight, score_column)
-    return run_backtest(weighted, name, costs)
+    return run_backtest(weighted, name, costs, periods_per_year=periods_per_year)
 
 
 def align_results(results: list[BacktestResult]) -> pd.DataFrame:

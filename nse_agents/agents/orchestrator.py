@@ -36,8 +36,37 @@ from .trader import Trader, TraderConfig
 class OrchestratorConfig:
     debate_mode: str = "always"      # always | disagreement | never
     disagreement_threshold: float = 0.30
+    disagreement_metric: str = "raw"  # raw | zscore | conviction
+    conviction_floor: float = 0.10
     batch_size: int = 16
     verbose: bool = True
+
+
+class _RunningStats:
+    """Causal per-agent mean and standard deviation.
+
+    Updated only *after* a row is used, and fed rows in date order, so the
+    z-score for a given day is computed from strictly earlier days. A
+    full-sample standardisation here would let the gate's own threshold depend
+    on the future distribution of stances.
+    """
+
+    def __init__(self) -> None:
+        self.n = 0
+        self._mean = 0.0
+        self._m2 = 0.0
+
+    def z(self, value: float) -> float:
+        if self.n < 30:
+            return value  # not enough history to standardise; fall back to raw
+        sd = (self._m2 / (self.n - 1)) ** 0.5
+        return (value - self._mean) / sd if sd > 1e-9 else 0.0
+
+    def update(self, value: float) -> None:
+        self.n += 1
+        delta = value - self._mean
+        self._mean += delta / self.n
+        self._m2 += delta * (value - self._mean)
 
 
 class Orchestrator:
@@ -53,18 +82,42 @@ class Orchestrator:
         self.backend = backend
         self.config = config or OrchestratorConfig()
 
-    def _needs_debate(self, opinions: list[Opinion]) -> bool:
+    def _needs_debate(self, opinions: list[Opinion], stats: dict | None = None) -> bool:
         if self.config.debate_mode == "never" or self.backend is None:
             return False
         if self.config.debate_mode == "always":
             return True
-        active = [o.stance for o in opinions if not o.abstained]
+
+        active = [o for o in opinions if not o.abstained]
         if len(active) < 2:
             return False
-        # Escalate when the specialists genuinely disagree: either they straddle
-        # zero, or their spread is wide.
-        straddles = min(active) < 0 < max(active)
-        return straddles or (max(active) - min(active)) > self.config.disagreement_threshold
+
+        if self.config.disagreement_metric == "conviction":
+            # Escalate only when both sides are actually *held*, not merely
+            # present. Requiring opposite signs alone is meaningless here: the
+            # agents' stances sit near zero and are close to symmetric, so two
+            # of them land on opposite sides of zero roughly 70% of the time by
+            # chance. That is noise disagreeing with noise, not a case worth
+            # putting to a committee. Weighting by confidence means an agent
+            # that is barely sure of a tiny tilt cannot trigger a debate.
+            weighted = [o.weighted() for o in active]
+            return max(weighted) > self.config.conviction_floor and min(
+                weighted
+            ) < -self.config.conviction_floor
+
+        if self.config.disagreement_metric == "zscore" and stats is not None:
+            # Compare agents on a common scale. Raw stances do not share one:
+            # the technical agent emits 2*P(up)-1 with P(up) ~ 0.50, so its
+            # stances live within +/-0.05, while the regime agent's span the
+            # full +/-1. Any fixed threshold on the raw spread is therefore
+            # really a threshold on the regime agent alone, and fires on 97% of
+            # days regardless of whether the agents actually disagree.
+            values = [stats[o.agent].z(o.stance) for o in active]
+        else:
+            values = [o.stance for o in active]
+
+        straddles = min(values) < 0 < max(values)
+        return straddles or (max(values) - min(values)) > self.config.disagreement_threshold
 
     def run(
         self,
@@ -84,10 +137,17 @@ class Orchestrator:
         all_opinions: list[list[Opinion]] = []
         debate_slots: list[int] = []
         briefs: list[tuple[str, str, str]] = []
+        stats = {agent.name: _RunningStats() for agent in self.agents}
         for row in pairs.itertuples(index=False):
             opinions = [agent.opine(row.symbol, row.date) for agent in self.agents]
             all_opinions.append(opinions)
-            if self._needs_debate(opinions):
+            needs = self._needs_debate(opinions, stats)
+            # Update after the decision, never before: the gate for this row
+            # must not see this row.
+            for opinion in opinions:
+                if not opinion.abstained:
+                    stats[opinion.agent].update(opinion.stance)
+            if needs:
                 debate_slots.append(len(all_opinions) - 1)
                 briefs.append(
                     (row.symbol, pd.Timestamp(row.date).date().isoformat(), format_findings(opinions))

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from nse_agents.backtest.stats import (
+    RISK_FREE_ANNUAL,
     block_bootstrap_sharpe,
     deflated_sharpe_ratio,
     holm_bonferroni,
@@ -73,3 +74,48 @@ def test_psr_falls_when_returns_are_negatively_skewed():
     skewed[:20] -= 0.06          # a fat left tail
     skewed += 0.06 * 20 / 2000   # restore the mean
     assert probabilistic_sharpe_ratio(skewed) < probabilistic_sharpe_ratio(symmetric)
+
+
+def test_bootstrap_ci_uses_the_same_annualisation_as_its_own_point_estimate():
+    """Regression: block_bootstrap_sharpe defaulted to periods_per_year=252
+    regardless of what the caller actually annualised with, so a 20-day-horizon
+    backtest's own reported Sharpe and its "95% CI" were computed on two
+    different scales -- the CI's own point estimate must equal sharpe_ratio()
+    called with the same periods_per_year, and it must actually contain that
+    point (for return distributions where that is expected).
+    """
+    from nse_agents.backtest.metrics import sharpe_ratio
+
+    rng = np.random.default_rng(6)
+    returns = rng.normal(0.006, 0.03, 200)  # e.g. 200 non-overlapping 20-day periods
+    ppy = 252 / 20
+
+    interval = block_bootstrap_sharpe(returns, n_boot=1000, block=10, periods_per_year=ppy)
+    external = sharpe_ratio(returns, RISK_FREE_ANNUAL, periods_per_year=ppy)
+    assert interval.point == pytest.approx(external)
+
+    # The bug's fingerprint: calling with the *wrong* (default, daily) ppy
+    # produces a materially different point on the same data.
+    wrong = block_bootstrap_sharpe(returns, n_boot=1000, block=10)
+    assert wrong.point != pytest.approx(interval.point, rel=1e-6)
+    assert abs(wrong.point) > abs(interval.point), (
+        "annualising a 20-day series as if it were daily must inflate, not shrink, Sharpe"
+    )
+
+
+def test_paired_difference_ci_respects_periods_per_year():
+    """Same bug class in the paired test: the point estimate must match an
+    independently-annualised computation, not a stale default."""
+    from nse_agents.backtest.metrics import sharpe_ratio
+
+    rng = np.random.default_rng(8)
+    a = rng.normal(0.006, 0.03, 200)
+    b = rng.normal(0.004, 0.028, 200)
+    ppy = 252 / 20
+
+    interval = paired_sharpe_difference(a, b, n_boot=1000, block=10, periods_per_year=ppy)
+    expected = (
+        sharpe_ratio(a, RISK_FREE_ANNUAL, periods_per_year=ppy)
+        - sharpe_ratio(b, RISK_FREE_ANNUAL, periods_per_year=ppy)
+    )
+    assert interval.point == pytest.approx(expected)
