@@ -283,3 +283,103 @@ def test_cached_classify_batch_forwards_only_the_misses(tmp_path):
     fresh = EchoBackend().classify_batch("sys", ["a", "b", "c"], labels)
     for cached, direct in zip(out, fresh):
         assert cached.probabilities == pytest.approx(direct.probabilities)
+
+
+def test_zscore_gate_discriminates_where_the_raw_gate_does_not():
+    """Regression for the 97.4%-escalation defect.
+
+    Two agents on wildly different scales: one always within +/-0.05, the other
+    spanning +/-1. On the raw spread every row looks like disagreement. On
+    z-scored stances only genuine disagreement does.
+    """
+    from nse_agents.agents.orchestrator import Orchestrator, OrchestratorConfig, _RunningStats
+
+    rng = np.random.default_rng(0)
+
+    class Narrow:
+        name = "technical"
+
+        def __init__(self):
+            self.i = 0
+
+        def opine(self, symbol, date):
+            self.i += 1
+            return Opinion(self.name, float(rng.normal(0, 0.02)), 1.0, "")
+
+    class Wide:
+        name = "regime"
+
+        def opine(self, symbol, date):
+            return Opinion(self.name, float(rng.choice([-1.0, 1.0])), 1.0, "")
+
+    dates = pd.bdate_range("2020-01-01", periods=400)
+    pairs = pd.DataFrame([{"date": d, "symbol": "A", "fwd_ret": 0.0} for d in dates])
+
+    def escalation_rate(metric):
+        orch = Orchestrator(
+            agents=[Narrow(), Wide()],
+            backend=object(),  # only needs to be non-None for the gate
+            config=OrchestratorConfig(debate_mode="disagreement",
+                                      disagreement_metric=metric, verbose=False),
+        )
+        stats = {"technical": _RunningStats(), "regime": _RunningStats()}
+        hits = 0
+        for _ in range(len(pairs)):
+            ops = [a.opine("A", dates[0]) for a in orch.agents]
+            if orch._needs_debate(ops, stats):
+                hits += 1
+            for o in ops:
+                stats[o.agent].update(o.stance)
+        return hits / len(pairs)
+
+    raw = escalation_rate("raw")
+    z = escalation_rate("zscore")
+    assert raw > 0.9, f"raw gate should fire on nearly everything, got {raw:.2%}"
+    assert z < raw, f"z-scored gate should be more selective ({z:.2%} vs {raw:.2%})"
+
+
+def test_running_stats_are_causal():
+    """The z-score for a row must not depend on that row."""
+    from nse_agents.agents.orchestrator import _RunningStats
+
+    stats = _RunningStats()
+    for value in np.linspace(-1, 1, 100):
+        stats.update(float(value))
+    before = stats.z(5.0)
+    stats.update(5.0)
+    after = stats.z(5.0)
+    assert before != after, "updating must change later z-scores"
+    assert before > 3.0, "an extreme value should score as extreme before it is absorbed"
+
+
+def test_conviction_gate_ignores_sign_disagreement_between_weak_views():
+    """Two near-zero stances on opposite sides are noise, not a debate."""
+    from nse_agents.agents.orchestrator import Orchestrator, OrchestratorConfig
+
+    orch = Orchestrator(
+        agents=[], backend=object(),
+        config=OrchestratorConfig(debate_mode="disagreement",
+                                  disagreement_metric="conviction",
+                                  conviction_floor=0.10, verbose=False),
+    )
+    weak = [Opinion("technical", 0.02, 0.9, ""), Opinion("regime", -0.03, 0.9, "")]
+    strong = [Opinion("technical", 0.8, 0.9, ""), Opinion("regime", -0.7, 0.9, "")]
+    one_sided = [Opinion("technical", 0.8, 0.9, ""), Opinion("regime", 0.7, 0.9, "")]
+
+    assert not orch._needs_debate(weak), "opposite signs alone must not escalate"
+    assert orch._needs_debate(strong), "genuine opposing conviction must escalate"
+    assert not orch._needs_debate(one_sided), "agreement must not escalate"
+
+
+def test_conviction_gate_weights_by_confidence():
+    """A strong stance held with no confidence must not trigger a debate."""
+    from nse_agents.agents.orchestrator import Orchestrator, OrchestratorConfig
+
+    orch = Orchestrator(
+        agents=[], backend=object(),
+        config=OrchestratorConfig(debate_mode="disagreement",
+                                  disagreement_metric="conviction",
+                                  conviction_floor=0.10, verbose=False),
+    )
+    unsure = [Opinion("technical", 0.9, 0.05, ""), Opinion("regime", -0.9, 0.05, "")]
+    assert not orch._needs_debate(unsure)

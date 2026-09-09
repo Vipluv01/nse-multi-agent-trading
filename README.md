@@ -50,6 +50,8 @@ deliberately unforgiving protocol.
 | LLM headline sentiment predicts next-day returns | **Not supported at 1.5B.** Event study over 15,200 symbol-days: slope p = 0.986, and the tercile ordering is inverted. A direct replication of the paper's own *small-model* result. |
 | Adding agents to a system improves it | **False here.** Adding the sentiment agent is actively harmful — `Tech+Sentiment` is the worst strategy in the study (Sharpe −2.09, 123.9× turnover). Only the regime filter helps, and not enough. |
 | Costs are a detail | **Emphatically false.** The mean-reversion baseline has a *gross* Sharpe of **+0.68** and a *net* Sharpe of **−1.41**. Its 223×/year turnover costs 36% of capital annually. |
+| Trying harder (more model classes, horizons, universe breadth) would find an edge | **Tested directly — no.** Nine further pre-registered attempts (GBM, wider universe, cross-sectional labels, longer horizons, debiasing) all failed; one briefly looked real before a units bug in the CI was caught and fixed. |
+| The null result means there is no edge at all | **Not quite — now quantified.** A power analysis shows this study could only reliably detect a true Sharpe above **~1.0**. The honest claim is "no edge that large was found," not "no edge exists." |
 
 The last row is the single most transferable finding. On daily NSE signals, the
 round-trip cost floor is **32 bps** (0.1% STT each way, 0.015% stamp duty on the buy,
@@ -96,10 +98,12 @@ The gap between the two dots is what Indian transaction costs remove. Note
 significance. Reporting a point estimate without this interval is how backtests get
 oversold.
 
-The **Deflated Sharpe Ratio** makes it worse, correctly. Given the number of
-configurations searched here, the expected maximum Sharpe from pure noise is **0.86** —
-higher than any Sharpe actually observed. Under that null, no strategy in this study
-clears the bar.
+The **Deflated Sharpe Ratio** makes it worse, correctly. Given the 10 configurations
+searched in the full agent ablation, the expected maximum Sharpe from pure noise alone is
+**1.35** — higher than Buy&Hold's own 0.58, let alone anything the learned strategies
+produced. Under that null, no strategy in this study clears the bar. (This number rises
+further once the nine additional improvement attempts below are counted; see
+[`PREREGISTRATION.md`](PREREGISTRATION.md).)
 
 ### Equity curves
 
@@ -156,25 +160,114 @@ one-flag swap (`--backend anthropic`).
 ### The multi-agent ablation
 
 Each configuration adds exactly one component, so the contribution of each is
-separately visible. All run the identical execution path and cost model.
+separately visible. All run the identical execution path and cost model, and the
+`Full+Debate` row includes the bull/bear researcher debate over ~18,610 escalated
+decisions (≈37,000 constrained-scoring calls) on top of every specialist.
 
-| Configuration | Sharpe (net) | CAGR | MaxDD | Exposure | Turnover/yr |
-|---|---|---|---|---|---|
-| Buy&Hold *(reference)* | **+0.578** | 16.2% | −38.6% | 1.00 | 0.1× |
-| Tech+Regime | +0.344 | 10.1% | −20.7% | 0.87 | 20.0× |
-| Tech+Sent+Regime | +0.177 | 7.6% | −24.2% | 0.90 | 43.0× |
-| Tech-only | −0.412 | 3.1% | −25.4% | 0.16 | 5.5× |
-| Tech+Sentiment | **−2.090** | −14.6% | −70.8% | 0.46 | **123.9×** |
+![Sharpe forest plot, full ablation](results/figures/sharpe_forest.png)
 
-**Adding the sentiment agent makes every configuration worse.** `Tech+Sentiment`
-is the worst strategy in the entire study: the bullish-prior signal flips constantly as
-the day's headline mix changes, producing 123.9× annual turnover — roughly 20% of
-capital per year in costs alone — for a signal with no predictive content. Adding the
-regime agent on top (`Tech+Sent+Regime`) partly rescues it by damping the churn, but
-still lands below `Tech+Regime` without sentiment.
+| Configuration | Sharpe (net) | CAGR | MaxDD | Exposure | Turnover/yr | vs Buy&Hold (Holm p) |
+|---|---|---|---|---|---|---|
+| Buy&Hold *(reference)* | **+0.578** | 16.2% | −38.6% | 1.00 | 0.1× | — |
+| RSI(14) | +0.424 | 12.3% | −39.8% | 0.60 | 4.3× | 0.575 |
+| Tech+Regime | +0.344 | 10.1% | −20.7% | 0.87 | 20.0× | 0.575 |
+| Tech+Sent+Regime | +0.177 | 7.6% | −24.2% | 0.90 | 43.0× | 0.205 |
+| **Full+Debate** | +0.131 | 6.9% | −25.9% | 0.91 | 41.2× | 0.066 |
+| MACD | +0.020 | 5.1% | −29.4% | 0.78 | 42.8× | 0.205 |
+| KDJ+RSI | −0.344 | −0.1% | −39.4% | 0.34 | 50.9× | **0.006** |
+| Tech-only | −0.412 | 3.1% | −25.4% | 0.16 | 5.5× | **0.046** |
+| MeanReversion | −1.408 | −18.1% | −79.6% | 0.76 | 223.5× | **<0.001** |
+| **Tech+Sentiment** | **−2.090** | −14.6% | **−70.8%** | 0.46 | **123.9×** | **<0.001** |
 
-The honest reading: **the only component that helps is the regime filter**, and even
-`Tech+Regime` does not beat Buy&Hold.
+**Adding the sentiment agent makes every configuration worse, and it is the only
+change in the whole ablation with a statistically unambiguous effect.**
+`Tech+Sentiment`'s own Sharpe interval is **[−2.77, −1.40]** — the single result in this
+entire study whose 95% CI does not touch zero in the *losing* direction. The bullish-prior
+signal flips constantly as the day's headline mix changes, producing 123.9× annual
+turnover for a signal with no predictive content (see the sentiment event study above).
+
+**Adding the debate layer does not help either.** `Full+Debate` (Sharpe +0.131, CAGR
+6.9%) sits *below* `Tech+Sent+Regime` (+0.177), which sits below `Tech+Regime` alone
+(+0.344, 10.1% CAGR). The incremental-contribution test (`Full+Debate` vs `Tech-only`)
+gives +0.544 with a CI of [−0.32, +1.28] — directionally positive but nowhere near
+significant (p_holm = 0.456). The honest reading across every configuration tried:
+**the only component with a positive, if non-significant, contribution is the regime
+filter**, and even `Tech+Regime` does not beat Buy&Hold.
+
+---
+
+## Trying to make it work: nine further attempts, pre-registered
+
+The result above invites an obvious question: was that the ceiling, or just what this
+particular setup happened to find? Nine additional, independently-motivated attempts
+were run to answer it — **each registered in [`PREREGISTRATION.md`](PREREGISTRATION.md)
+before its result was seen**, specifically so a favourable result could not be selected
+after the fact. The same pass bar applied to all of them: the net Sharpe's 95% CI must
+exclude zero **and** the strategy must beat Buy&Hold after Holm correction.
+
+| # | Attempt | Best result | Verdict |
+|---|---|---|---|
+| A1–A3 | Sentiment debiasing (cross-sectional de-mean, trailing de-mean, ≥3-headline filter) | p = 0.25 (min-headlines filter flips the spread to the *correct* sign, but not significantly) | Fails |
+| B1/B2 | Longer forward horizons (5-day, 20-day) | Cost drag falls 2.8%→1.1%/yr as predicted, but CI still crosses zero and still loses to Buy&Hold | Fails |
+| C1 | Cross-sectional label (beat the day's median, removing market beta) | Same pattern at every horizon tested (1/5/20-day) | Fails |
+| E1 | Gradient-boosted trees in place of the LSTM | Worse than the LSTM at every setting tried | Fails |
+| E2/E2b | GBM + cross-sectional label + **4× wider universe** (40 liquid NSE names) | **See below — this is where a real bug was caught** | Fails |
+
+**The GBM + wide-universe attempt is the most important line in this table, not
+because it worked, but because of what happened while testing it.** Before a fix,
+E2/E2b's own Sharpe intervals appeared to exclude zero for the first time in the whole
+study — a real, if modest, positive result. Investigating *why* the interval's lower
+bound sat above its own point estimate (which should never happen) surfaced a bug: the
+bootstrap CI functions had never been updated to accept the same `periods_per_year` used
+everywhere else, so a 20-day-horizon backtest's headline Sharpe and its "95% CI" were
+silently computed on two different annualisation scales.
+
+| | Sharpe | CI (buggy) | CI (fixed) |
+|---|---|---|---|
+| E2 (GBM, cross-sectional, h=5, 40 names) | +0.420 | [+0.02, +3.32] — *looked significant* | **[−0.25, +1.19] — noise** |
+| E2b (GBM, cross-sectional, h=20, 40 names) | +0.589 | [+0.74, +8.50] — *looked significant* | **[−0.10, +1.52] — noise** |
+
+Fixed in `nse_agents/backtest/stats.py`, with a regression test asserting a CI's point
+estimate must match an independently-computed Sharpe at the same annualisation. Full
+account in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md#7). This is the single clearest artefact
+in this repository of the discipline the pre-registration exists to enforce: a result
+that looked like a genuine finding was caught and reversed before it was reported, not
+after.
+
+**After the fix: none of the nine attempts clear the bar.**
+
+---
+
+## How large an edge would this study actually have found?
+
+"No configuration beat Buy&Hold" is a weak claim on its own — it invites *did you even
+look hard enough?* A **Monte Carlo power analysis** answers that precisely, using the
+exact `block_bootstrap_sharpe` test that decided every pass/fail verdict above, run
+against synthetic return series built from this study's own real Buy&Hold data (so the
+volatility, autocorrelation and fat tails are realistic, not assumed Gaussian) with a
+known, injected true Sharpe.
+
+![Power curve](results/figures/power_curve.png)
+
+| Horizon | Periods (years) | Minimum detectable Sharpe @ 80% power |
+|---|---|---|
+| 1-day | 1,911 (7.6y) | **1.047** |
+| 5-day | 382 (7.6y) | 1.087 |
+| 20-day | 95 (7.5y) | 0.978 |
+
+All three converge tightly on **≈1.0**, because it is total elapsed time (7.5–7.6 years
+throughout), not how it is sliced into rebalancing periods, that determines this study's
+statistical power — a clean, testable prediction the simulation confirms rather than
+assumes.
+
+**This sharpens the claim.** A Sharpe of 1.0 is already an excellent result by any
+industry standard; most real systematic strategies run at 0.3–0.7. The honest summary of
+this entire study is therefore not *"there is no edge in NSE technical or sentiment
+signals"* — it is: **no edge above an unusually large threshold (~1.0 Sharpe) was found
+across ten architectures, three horizons, two label constructions, two model classes,
+and a 4× wider universe, and this study was not powered to reliably detect anything
+smaller.** Extending the data window or the universe further is what would lower that
+threshold; nothing here manufactured a smaller one improperly.
 
 ---
 
@@ -184,7 +277,7 @@ The honest reading: **the only component that helps is the regime filter**, and 
 cd nse_agents
 uv venv --python 3.11 && uv pip install -e ".[dev]"
 
-.venv/bin/python -m pytest tests/ -q          # 28 tests, ~1s
+.venv/bin/python -m pytest tests/ -q          # 68 tests, ~2.5min (power-analysis tests are Monte Carlo)
 
 # 1. Price data is fetched and cached on first use (Yahoo, split/bonus adjusted).
 # 2. Headline corpus: 36,630 Indian headlines, 2016-2026. Resumable, and shardable
@@ -205,10 +298,18 @@ wait && .venv/bin/python scripts/merge_news.py
 .venv/bin/python scripts/aggregate_sentiment.py --tag local
 
 # 5. The multi-agent ablation. The debate pass is the expensive part (~37k
-#    constrained-scoring calls); every call is cached, so re-runs are free.
+#    constrained-scoring calls, ~2.5h on CPU); every call is cached, so re-runs are free.
 .venv/bin/python scripts/run_agents.py --backend local --debate-mode disagreement
 
-# 6. Figures.
+# 6. The improvement campaign (nine pre-registered attempts) and the power
+#    analysis that quantifies what the whole study could and could not detect.
+#    See PREREGISTRATION.md before reading these results.
+.venv/bin/python scripts/improve_sentiment.py     # A1-A3: sentiment debiasing
+.venv/bin/python scripts/improve_horizon.py       # B1/B2/C1: horizons, cross-sectional label
+.venv/bin/python scripts/improve_gbm.py           # E1/E2: gradient-boosted trees, wider universe
+.venv/bin/python scripts/power_analysis.py        # ~13 min: Monte Carlo detection power
+
+# 7. Figures.
 .venv/bin/python scripts/make_figures.py
 ```
 
@@ -358,15 +459,21 @@ careful about what could make it *wrongly* negative.
 
 ## What I would do next
 
-In priority order, and honestly — the first item is worth more than the rest combined:
+Updated after the improvement campaign and power analysis. In priority order:
 
 1. **Rerun the sentiment and debate arms on a frontier model.** One flag
    (`--backend anthropic`). The paper this replicates says the capability is emergent;
-   a 1.5B null is not a test of that.
-2. **Point-in-time fundamentals** would allow a real fundamental agent instead of a
+   a 1.5B null is not a test of that, and it is the single untried lever most likely to
+   change a result rather than confirm the existing null.
+2. **Extend the data window.** The power analysis is precise about why: this study's
+   detection floor (~Sharpe 1.0) is set by *years of data*, not by anything about the
+   models or horizons tried. More years — not a wider search over the same window — is
+   the only lever that lowers it.
+3. **Point-in-time fundamentals** would allow a real fundamental agent instead of a
    regime proxy. This is a data-acquisition problem, not a modelling one.
-3. **A weekly or monthly horizon.** At 32 bps round-trip, a daily signal must clear a
-   very high bar. The same pipeline at a 20-day horizon faces ~1/20th the cost drag,
-   and that is where a real edge would most plausibly survive.
-4. **Point-in-time index constituents**, to remove the survivorship in the 10-name
+4. **Point-in-time index constituents**, to remove the survivorship in the (now 40-name)
    universe.
+5. **A formal earnings/event-window study for the sentiment agent** — the one setting
+   academic literature suggests news predictability is most likely to survive, and not
+   yet isolated here (the event study above pools all headlines, not just
+   earnings-adjacent ones).

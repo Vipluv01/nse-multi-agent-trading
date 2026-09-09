@@ -230,6 +230,44 @@ def threshold_sensitivity(sweep: pd.DataFrame, path: Path, title: str) -> Path:
     return path
 
 
+def power_curve(curves: pd.DataFrame, path: Path, title: str, subtitle: str = "") -> Path:
+    """Detection power vs true Sharpe, one line per horizon tested.
+
+    The near-overlap of the three lines is itself the finding -- total elapsed
+    years, not rebalancing frequency, is what drives this study's statistical
+    power, so no horizon choice alone escapes the same detection floor.
+    """
+    fig, ax = plt.subplots(figsize=(7.2, 4.2))
+    horizons = sorted(curves["horizon_days"].unique())
+    labels = {1: "1-day (h=1)", 5: "5-day (h=5)", 20: "20-day (h=20)"}
+    for slot, h in enumerate(horizons):
+        sub = curves[curves["horizon_days"] == h].sort_values("target_sharpe")
+        ax.plot(sub["target_sharpe"], sub["power"], color=SERIES[slot], lw=2,
+                marker="o", ms=5, mec=SURFACE, mew=1.2, label=labels.get(h, f"h={h}"))
+
+    ax.axhline(0.80, color=INK, lw=1.1, ls=(0, (4, 3)), zorder=1)
+    ax.text(0.02, 0.815, "80% power (conventional threshold)", transform=ax.get_yaxis_transform(),
+            fontsize=8, color=INK_2, va="bottom")
+    ax.axhline(0.05, color=MUTED, lw=1, zorder=1)
+    # Placed left, above the line, past the first data point (x=0) so the
+    # marker there doesn't sit inside the text -- and clear of the legend box,
+    # which the earlier right-aligned placement collided with.
+    ax.text(0.30, 0.065, "5% false-positive rate", transform=ax.get_yaxis_transform(),
+            fontsize=8, color=MUTED, va="bottom", ha="left")
+
+    ax.set_xlabel("True annualised Sharpe ratio (ground truth in the simulation)")
+    ax.set_ylabel("Probability this study's own test detects it")
+    ax.set_ylim(-0.03, 1.05)
+    ax.grid(axis="y")
+    ax.set_axisbelow(True)
+    ax.legend(frameon=False, fontsize=8.5, loc="lower right")
+    _finish(ax, title, subtitle)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 def sentiment_buckets(buckets: pd.DataFrame, path: Path, title: str, subtitle: str) -> Path:
     fig, ax = plt.subplots(figsize=(6.2, 3.0))
     colours = [SERIES[1], MUTED, SERIES[2]]

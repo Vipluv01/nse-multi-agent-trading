@@ -56,19 +56,37 @@ def block_bootstrap_sharpe(
     risk_free_annual: float = RISK_FREE_ANNUAL,
     seed: int = 20260909,
     alpha: float = 0.05,
+    periods_per_year: float = TRADING_DAYS,
 ) -> Interval:
+    """Block-bootstrap CI for the Sharpe ratio.
+
+    ``periods_per_year`` must match the caller's rebalancing frequency and be
+    passed through consistently -- this function used to silently default to
+    252 regardless of what the point estimate was annualised with, so a
+    20-day-horizon backtest's own reported Sharpe and its "confidence interval"
+    were computed on two different annualisation scales (and two different
+    per-period risk-free deductions). The mismatch is easy to miss because both
+    numbers still look like plausible Sharpes on their own; it surfaces as the
+    CI's lower bound sitting above the point estimate, which is what caught it
+    here (see PREREGISTRATION.md addendum).
+    """
     returns = np.asarray(returns, dtype=float)
     returns = returns[~np.isnan(returns)]
     if len(returns) < block * 2:
-        return Interval(sharpe_ratio(returns, risk_free_annual), np.nan, np.nan)
+        return Interval(
+            sharpe_ratio(returns, risk_free_annual, periods_per_year), np.nan, np.nan
+        )
     rng = np.random.default_rng(seed)
     draws = np.empty(n_boot)
     for b in range(n_boot):
-        draws[b] = sharpe_ratio(returns[_block_indices(len(returns), block, rng)], risk_free_annual)
+        draws[b] = sharpe_ratio(
+            returns[_block_indices(len(returns), block, rng)], risk_free_annual, periods_per_year
+        )
     lo, hi = np.percentile(draws, [100 * alpha / 2, 100 * (1 - alpha / 2)])
     # Two-sided bootstrap p-value for "Sharpe <= 0".
     p = 2.0 * min((draws <= 0).mean(), (draws >= 0).mean())
-    return Interval(sharpe_ratio(returns, risk_free_annual), float(lo), float(hi), float(min(p, 1.0)))
+    point = sharpe_ratio(returns, risk_free_annual, periods_per_year)
+    return Interval(point, float(lo), float(hi), float(min(p, 1.0)))
 
 
 def paired_sharpe_difference(
@@ -79,20 +97,36 @@ def paired_sharpe_difference(
     risk_free_annual: float = RISK_FREE_ANNUAL,
     seed: int = 20260909,
     alpha: float = 0.05,
+    periods_per_year: float = TRADING_DAYS,
 ) -> Interval:
-    """Bootstrap CI for Sharpe(a) - Sharpe(b) on commonly-dated returns."""
+    """Bootstrap CI for Sharpe(a) - Sharpe(b) on commonly-dated returns.
+
+    ``periods_per_year`` must match both series' rebalancing frequency. The
+    p-value is scale-invariant to this (it only depends on the sign of each
+    bootstrap draw, and the wrong scale is a positive multiplicative constant
+    applied identically to both terms), so a stale default here does not
+    invalidate significance calls the way it does in block_bootstrap_sharpe --
+    but the reported point estimate and CI magnitude are still wrong, so it is
+    threaded through regardless.
+    """
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
     keep = ~np.isnan(a) & ~np.isnan(b)
     a, b = a[keep], b[keep]
-    point = sharpe_ratio(a, risk_free_annual) - sharpe_ratio(b, risk_free_annual)
+    point = (
+        sharpe_ratio(a, risk_free_annual, periods_per_year)
+        - sharpe_ratio(b, risk_free_annual, periods_per_year)
+    )
     if len(a) < block * 2:
         return Interval(point, np.nan, np.nan)
     rng = np.random.default_rng(seed)
     draws = np.empty(n_boot)
     for i in range(n_boot):
         idx = _block_indices(len(a), block, rng)  # same index for both: paired
-        draws[i] = sharpe_ratio(a[idx], risk_free_annual) - sharpe_ratio(b[idx], risk_free_annual)
+        draws[i] = (
+            sharpe_ratio(a[idx], risk_free_annual, periods_per_year)
+            - sharpe_ratio(b[idx], risk_free_annual, periods_per_year)
+        )
     lo, hi = np.percentile(draws, [100 * alpha / 2, 100 * (1 - alpha / 2)])
     p = 2.0 * min((draws <= 0).mean(), (draws >= 0).mean())
     return Interval(point, float(lo), float(hi), float(min(p, 1.0)))

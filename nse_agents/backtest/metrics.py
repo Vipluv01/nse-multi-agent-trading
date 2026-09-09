@@ -62,16 +62,26 @@ def max_drawdown(returns: np.ndarray) -> float:
 
 
 def sharpe_ratio(
-    returns: np.ndarray, risk_free_annual: float = RISK_FREE_ANNUAL
+    returns: np.ndarray,
+    risk_free_annual: float = RISK_FREE_ANNUAL,
+    periods_per_year: float = TRADING_DAYS,
 ) -> float:
+    """Annualised excess Sharpe.
+
+    ``periods_per_year`` must match the rebalancing frequency of the return
+    series: 252 for daily bars, 252/5 for non-overlapping weekly periods, and
+    so on. Annualising a 20-day return series with sqrt(252) inflates the
+    Sharpe by sqrt(20) -- roughly 4.5x -- which would make a longer-horizon
+    variant look dramatically better for purely arithmetic reasons.
+    """
     if len(returns) < 2:
         return 0.0
-    daily_rf = (1.0 + risk_free_annual) ** (1.0 / TRADING_DAYS) - 1.0
-    excess = returns - daily_rf
+    period_rf = (1.0 + risk_free_annual) ** (1.0 / periods_per_year) - 1.0
+    excess = returns - period_rf
     sd = excess.std(ddof=1)
     if sd < 1e-12:
         return 0.0
-    return float(excess.mean() / sd * np.sqrt(TRADING_DAYS))
+    return float(excess.mean() / sd * np.sqrt(periods_per_year))
 
 
 def compute_performance(
@@ -79,6 +89,7 @@ def compute_performance(
     turnover: np.ndarray | None = None,
     exposure: np.ndarray | None = None,
     risk_free_annual: float = RISK_FREE_ANNUAL,
+    periods_per_year: float = TRADING_DAYS,
 ) -> Performance:
     returns = np.asarray(returns, dtype=float)
     returns = returns[~np.isnan(returns)]
@@ -86,12 +97,12 @@ def compute_performance(
     if n == 0:
         return Performance(*([0] * 18))
 
-    years = n / TRADING_DAYS
+    years = n / periods_per_year
     equity = float(np.prod(1.0 + returns))
     cagr = equity ** (1.0 / years) - 1.0 if years > 0 and equity > 0 else -1.0
 
-    daily_rf = (1.0 + risk_free_annual) ** (1.0 / TRADING_DAYS) - 1.0
-    downside = returns[returns < daily_rf] - daily_rf
+    period_rf = (1.0 + risk_free_annual) ** (1.0 / periods_per_year) - 1.0
+    downside = returns[returns < period_rf] - period_rf
     dsd = downside.std(ddof=1) if len(downside) > 1 else 0.0
 
     # A degenerate (near-constant) series makes scipy's moment calculation
@@ -107,11 +118,11 @@ def compute_performance(
     return Performance(
         n_days=n,
         cagr=float(cagr),
-        ann_return=float(returns.mean() * TRADING_DAYS),
-        ann_vol=float(returns.std(ddof=1) * np.sqrt(TRADING_DAYS)),
-        sharpe=sharpe_ratio(returns, risk_free_annual),
-        sharpe_gross=sharpe_ratio(returns, 0.0),
-        sortino=float((returns.mean() - daily_rf) / dsd * np.sqrt(TRADING_DAYS))
+        ann_return=float(returns.mean() * periods_per_year),
+        ann_vol=float(returns.std(ddof=1) * np.sqrt(periods_per_year)),
+        sharpe=sharpe_ratio(returns, risk_free_annual, periods_per_year),
+        sharpe_gross=sharpe_ratio(returns, 0.0, periods_per_year),
+        sortino=float((returns.mean() - period_rf) / dsd * np.sqrt(periods_per_year))
         if dsd > 1e-12
         else 0.0,
         max_drawdown=mdd,
