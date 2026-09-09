@@ -77,6 +77,25 @@ def main() -> int:
             curves, FIGS / "equity_curves.png",
             "Out-of-sample equity, net of Indian transaction costs"))
 
+    improvements = RESULTS / "improvements"
+    if (improvements / "regime_breakdown.csv").exists():
+        breakdown = pd.read_csv(improvements / "regime_breakdown.csv")
+        made.append(figures.crash_drawdown(
+            breakdown, FIGS / "crash_drawdown.png",
+            "The risk overlay protects capital exactly when it should",
+            "Maximum drawdown during the 82-day COVID crash (Mar-Jun 2020), the worst "
+            "stretch in the OOS window"))
+
+    if (improvements / "power_curves.csv").exists():
+        curves = pd.read_csv(improvements / "power_curves.csv")
+        summary = pd.read_csv(improvements / "power_summary.csv")
+        mde = summary.loc[summary.horizon_days == 1, "mde_80pct_power"].iloc[0]
+        made.append(figures.power_curve(
+            curves, FIGS / "power_curve.png",
+            "This study could reliably detect a Sharpe above ~1.0, not below it",
+            f"Monte Carlo power of the same block-bootstrap test used throughout; "
+            f"MDE at 80% power ~ {mde:.2f} across all three horizons"))
+
     sentiment = RESULTS / "sentiment"
     for tag in ("local", "anthropic"):
         path = sentiment / f"event_buckets_{tag}.csv"
