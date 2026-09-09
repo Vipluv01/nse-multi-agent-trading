@@ -15,6 +15,7 @@ Deflated Sharpe Ratio that charges the result for every configuration searched.
 
 - [The claim, and what actually happened](#the-claim-and-what-actually-happened)
 - [Results](#results)
+- [Does the null hold across market regimes?](#does-the-null-hold-across-market-regimes)
 - [How to reproduce](#how-to-reproduce)
 - [Architecture](#architecture)
 - [How correctness is verified](#how-correctness-is-verified)
@@ -52,6 +53,7 @@ deliberately unforgiving protocol.
 | Costs are a detail | **Emphatically false.** The mean-reversion baseline has a *gross* Sharpe of **+0.68** and a *net* Sharpe of **−1.41**. Its 223×/year turnover costs 36% of capital annually. |
 | Trying harder (more model classes, horizons, universe breadth) would find an edge | **Tested directly — no.** Nine further pre-registered attempts (GBM, wider universe, cross-sectional labels, longer horizons, debiasing) all failed; one briefly looked real before a units bug in the CI was caught and fixed. |
 | The null result means there is no edge at all | **Not quite — now quantified.** A power analysis shows this study could only reliably detect a true Sharpe above **~1.0**. The honest claim is "no edge that large was found," not "no edge exists." |
+| The risk overlay does nothing since it doesn't beat Buy&Hold | **Wrong mechanism, not no mechanism.** During the 82-day COVID crash it captured a −1.1% drawdown against Buy&Hold's −23.6%. It trades upside for downside protection, and over this window that trade lost on net — a different finding from "no effect." |
 
 The last row is the single most transferable finding. On daily NSE signals, the
 round-trip cost floor is **32 bps** (0.1% STT each way, 0.015% stamp duty on the buy,
@@ -196,6 +198,48 @@ filter**, and even `Tech+Regime` does not beat Buy&Hold.
 
 ---
 
+## Does the null hold across market regimes?
+
+Every result above averages over 7.6 years. That average can hide a strategy that only
+works in one condition -- or, the more interesting possibility, a risk overlay that
+looks unremarkable on average while doing real work specifically when markets fall.
+
+The regime classifier is **market-derived, not strategy-derived**: a mechanical, causal
+function of the Nifty's own price history (trailing-60-day return and distance from its
+running peak), fixed and validated against known market history *before any strategy's
+returns were loaded*. Defining "crash" by which days a strategy happened to lose money
+would be circular; defining it from the benchmark's own drawdown is not.
+
+| Regime | Trading days | What it is |
+|---|---|---|
+| Crash | 82 | Nifty down >10% over the trailing 60 sessions -- almost entirely the COVID crash, Mar-Jun 2020 |
+| Choppy | 973 | Neither falling sharply nor near a high |
+| Bull | 851 | Within 3% of the Nifty's running all-time high |
+
+![Crash-regime drawdown](results/figures/crash_drawdown.png)
+
+**During the 82-day COVID crash, `Tech+Regime` drew down −1.1% while Buy&Hold drew down
+−23.6%.** Every configuration carrying the risk overlay (regime filter, volatility
+scaling, the drawdown brake) clusters near zero; every configuration without it clusters
+near Buy&Hold's loss, including the classical baselines. This is not a fluke of the
+crash regime's small sample — it is the risk overlay's designed behaviour: the regime
+agent's trend, relative-strength and range-position votes all turn sharply negative
+together when a market is actually falling, and the book goes largely flat.
+
+The trade-off shows up just as clearly in the calmer regimes, in the full table
+([`results/improvements/regime_breakdown.csv`](results/improvements/regime_breakdown.csv)):
+in the "bull" regime, `Tech+Regime` returns +47.1% cumulative against Buy&Hold's +63.8% —
+real upside given up in exchange for the crash protection above. Averaged over the whole
+window, the give-up in calm markets outweighs the protection in the crash, which is
+exactly why `Tech+Regime`'s full-period Sharpe (+0.34) still trails Buy&Hold's (+0.58).
+**The null result is not "this system does nothing" — it is "this system trades some
+upside for downside protection, and over this particular 7.6-year window (one real
+crash, two long calm stretches) that trade did not pay off on net."** Whether it would
+pay off over a longer window with more crashes is precisely the kind of question the
+power analysis below says this study cannot answer from 7.6 years of data.
+
+---
+
 ## Trying to make it work: nine further attempts, pre-registered
 
 The result above invites an obvious question: was that the ceiling, or just what this
@@ -301,13 +345,14 @@ wait && .venv/bin/python scripts/merge_news.py
 #    constrained-scoring calls, ~2.5h on CPU); every call is cached, so re-runs are free.
 .venv/bin/python scripts/run_agents.py --backend local --debate-mode disagreement
 
-# 6. The improvement campaign (nine pre-registered attempts) and the power
-#    analysis that quantifies what the whole study could and could not detect.
-#    See PREREGISTRATION.md before reading these results.
+# 6. The improvement campaign (nine pre-registered attempts), the power
+#    analysis, and the regime-stability check. See PREREGISTRATION.md before
+#    reading the improvement-attempt results.
 .venv/bin/python scripts/improve_sentiment.py     # A1-A3: sentiment debiasing
 .venv/bin/python scripts/improve_horizon.py       # B1/B2/C1: horizons, cross-sectional label
 .venv/bin/python scripts/improve_gbm.py           # E1/E2: gradient-boosted trees, wider universe
 .venv/bin/python scripts/power_analysis.py        # ~13 min: Monte Carlo detection power
+.venv/bin/python scripts/regime_analysis.py       # crash/choppy/bull breakdown, ~1 min
 
 # 7. Figures.
 .venv/bin/python scripts/make_figures.py

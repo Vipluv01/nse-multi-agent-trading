@@ -230,6 +230,47 @@ def threshold_sensitivity(sweep: pd.DataFrame, path: Path, title: str) -> Path:
     return path
 
 
+def crash_drawdown(breakdown: pd.DataFrame, path: Path, title: str, subtitle: str = "") -> Path:
+    """Max drawdown during the crash regime only, sorted, one bar per strategy.
+
+    The headline diagnostic of the regime-stability check: does a risk overlay
+    that looks unremarkable on a 7.6-year average actually protect capital when
+    it matters? A grouped-by-regime chart would bury this signal under two much
+    calmer regimes; isolating the crash window is what makes it legible.
+    """
+    frame = breakdown[breakdown["regime"] == "crash"].copy()
+    frame = frame.sort_values("max_drawdown", ascending=True).reset_index(drop=True)
+    fig, ax = plt.subplots(figsize=(7.2, max(2.6, 0.34 * len(frame) + 1.4)))
+
+    y = np.arange(len(frame))
+    # Colour marks whether a strategy has the multi-agent risk overlay active
+    # (regime filter / vol-scaling / drawdown brake), since that is the
+    # mechanism under test here, not an arbitrary split.
+    risk_managed = {"Tech+Regime", "Tech+Sent+Regime", "Full+Debate"}
+    colours = [SERIES[2] if s in risk_managed else MUTED for s in frame["strategy"]]
+    bars = ax.barh(y, frame["max_drawdown"], color=colours, zorder=3, height=0.62)
+    ax.bar_label(bars, fmt=lambda v: f"{v:.1%}", padding=4, fontsize=8.5, color=INK_2)
+
+    ax.axvline(0, color=INK, lw=1.1, zorder=2)
+    ax.set_yticks(y, frame["strategy"])
+    # Headroom on the left, or the label on the longest bars collides with the
+    # y-axis strategy names sitting at the same x position.
+    ax.set_xlim(frame["max_drawdown"].min() * 1.22, 0.015)
+    ax.set_xlabel("Maximum drawdown during the crash regime only "
+                   f"({int(frame['n_days'].iloc[0])} trading days)")
+    ax.xaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+    ax.grid(axis="x", zorder=0)
+    ax.set_axisbelow(True)
+    ax.plot([], [], "s", color=SERIES[2], label="Risk overlay active (regime filter / vol-scaling / drawdown brake)")
+    ax.plot([], [], "s", color=MUTED, label="No risk overlay")
+    ax.legend(frameon=False, fontsize=8, loc="lower right")
+    _finish(ax, title, subtitle)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 def power_curve(curves: pd.DataFrame, path: Path, title: str, subtitle: str = "") -> Path:
     """Detection power vs true Sharpe, one line per horizon tested.
 

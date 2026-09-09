@@ -161,3 +161,21 @@ and that the wrong default measurably shifts it. See git history for the fix.
 **Why this belongs in the write-up, not just the commit log:** it is the single clearest
 demonstration in this project that internal consistency checks catch real errors before
 they become false claims -- exactly the discipline the pre-registration exists to protect.
+
+---
+
+## 8. Regime-stability check: the null hides a real risk/return trade-off, not "no effect"
+
+Added after the improvement campaign found no configuration that beats Buy&Hold on
+average. Breaking the same walk-forward results down by a market-derived (not
+strategy-derived) regime classifier shows the risk-managed configurations
+(`Tech+Regime`, `Tech+Sent+Regime`, `Full+Debate`) drew down **−1.1% to −7.7%** during
+the 82-day COVID crash while every configuration without the risk overlay, including
+Buy&Hold, drew down **−21% to −24%**. The same configurations give up real upside in
+calm/bull regimes, which is why the full-period average still favours Buy&Hold.
+
+**Not yet resolved:** whether this trade-off is net-positive over a longer window with
+more crash regimes than the one available here (82 days is not enough to say anything
+statistically about the crash regime specifically -- see `scripts/regime_analysis.py`,
+which deliberately reports cumulative return and drawdown rather than a bootstrapped
+Sharpe for that regime, to avoid manufacturing false precision on ~80 data points).
