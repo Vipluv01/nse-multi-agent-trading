@@ -140,6 +140,37 @@ def cmd_healthcheck(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_db_backup(args: argparse.Namespace) -> int:
+    db_path = Path(args.db)
+    if not db_path.exists():
+        print(f"no paper-trading state at {db_path} -- nothing to back up.")
+        return 1
+    store = PaperTradingStore(db_path)
+    backup_path = store.backup(args.backup_dir)
+    size_kb = backup_path.stat().st_size / 1024
+    print(f"backed up {db_path} -> {backup_path} ({size_kb:.1f} KB, gzip-compressed)")
+    return 0
+
+
+def cmd_db_vacuum(args: argparse.Namespace) -> int:
+    db_path = Path(args.db)
+    if not db_path.exists():
+        print(f"no paper-trading state at {db_path} -- nothing to vacuum.")
+        return 1
+    store = PaperTradingStore(db_path)
+    result = store.vacuum()
+    print(f"{'DB VACUUM':^50}")
+    print("=" * 50)
+    print(f"  size before checkpoint : {result['size_before_checkpoint_bytes']:,} bytes")
+    print(f"  size after checkpoint  : {result['size_after_checkpoint_bytes']:,} bytes "
+          f"({result['checkpoint_grew_file_by_bytes']:+,} bytes -- WAL content absorbed)")
+    print(f"  size after VACUUM      : {result['size_after_vacuum_bytes']:,} bytes "
+          f"(-{result['vacuum_reclaimed_bytes']:,} bytes reclaimed)")
+    print(f"  WAL frames checkpointed: {result['wal_checkpointed_frames']}")
+    print("=" * 50)
+    return 0
+
+
 _SUBCOMMANDS = {
     "paper-status": (
         "Show current paper-trading account state, positions and performance.",
@@ -157,6 +188,23 @@ _SUBCOMMANDS = {
                                 "LLM provider to confirm the key actually works "
                                 "(off by default -- costs a token, not just a check)."),
         ),
+    ),
+    "db-backup": (
+        "Create a timestamped, gzip-compressed backup of the paper-trading database "
+        "in results/paper_trading/backups/ (via SQLite's online backup API, not a "
+        "plain file copy -- safe under WAL mode's split main-file/-wal-file storage).",
+        cmd_db_backup,
+        lambda p: (
+            p.add_argument("--db", default=str(DEFAULT_DB_PATH)),
+            p.add_argument("--backup-dir", default=None,
+                           help="Defaults to <db's parent dir>/backups."),
+        ),
+    ),
+    "db-vacuum": (
+        "WAL-checkpoint and VACUUM the paper-trading database to reclaim space "
+        "and keep query performance from degrading as the trade log grows.",
+        cmd_db_vacuum,
+        lambda p: p.add_argument("--db", default=str(DEFAULT_DB_PATH)),
     ),
 }
 

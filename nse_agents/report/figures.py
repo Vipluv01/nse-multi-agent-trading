@@ -329,3 +329,63 @@ def sentiment_buckets(buckets: pd.DataFrame, path: Path, title: str, subtitle: s
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return path
+
+
+def hyperparam_sensitivity(
+    horizon_cost: pd.DataFrame, conviction_floor: pd.DataFrame, path: Path,
+    title: str, subtitle: str,
+) -> Path:
+    """Three small panels, not one merged surface: horizon and cost_threshold_bps
+    share an x-axis concept (both vary the traded strategy) but conviction_floor is
+    a genuinely different mechanism (debate escalation, not trading itself), so a
+    single 2D heatmap across all three would force an artificial third dimension
+    onto a "+"-shaped design that was never a full crossed grid to begin with (see
+    PREREGISTRATION.md) -- three honest line panels represent the actual data better
+    than one chart implying a relationship that wasn't measured.
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(11.5, 3.4))
+
+    # Panel 1: horizon sensitivity, cost held at the reference 32bps.
+    ax = axes[0]
+    sub = horizon_cost[horizon_cost.cost_threshold_bps == 32].sort_values("horizon")
+    ax.errorbar(sub["horizon"], sub["sharpe_net"],
+               yerr=[sub["sharpe_net"] - sub["ci_low"], sub["ci_high"] - sub["sharpe_net"]],
+               fmt="o-", color=SERIES[0], ecolor=MUTED, elinewidth=1.5, capsize=3, ms=6, mec=SURFACE, mew=1.2)
+    ax.axhline(0, color=INK, lw=1, zorder=1)
+    ax.set_xlabel("horizon (days)")
+    ax.set_ylabel("Sharpe (net)")
+    ax.set_title("vs horizon (cost=32bps)", fontsize=9.5, color=INK_2, loc="left")
+    ax.grid(axis="y", zorder=0)
+    ax.set_axisbelow(True)
+
+    # Panel 2: cost-threshold sensitivity, horizon held at h=1.
+    ax = axes[1]
+    sub = horizon_cost[horizon_cost.horizon == 1].sort_values("cost_threshold_bps")
+    ax.errorbar(sub["cost_threshold_bps"], sub["sharpe_net"],
+               yerr=[sub["sharpe_net"] - sub["ci_low"], sub["ci_high"] - sub["sharpe_net"]],
+               fmt="o-", color=SERIES[1], ecolor=MUTED, elinewidth=1.5, capsize=3, ms=6, mec=SURFACE, mew=1.2)
+    ax.axhline(0, color=INK, lw=1, zorder=1)
+    ax.set_xlabel("cost threshold (bps)")
+    ax.set_title("vs cost_threshold_bps (h=1)", fontsize=9.5, color=INK_2, loc="left")
+    ax.grid(axis="y", zorder=0)
+    ax.set_axisbelow(True)
+
+    # Panel 3: conviction-floor sensitivity (a debate-escalation parameter,
+    # not a trading parameter -- shown separately, deliberately).
+    ax = axes[2]
+    sub = conviction_floor.sort_values("conviction_floor")
+    ax.errorbar(sub["conviction_floor"], sub["sharpe_net"],
+               yerr=[sub["sharpe_net"] - sub["ci_low"], sub["ci_high"] - sub["sharpe_net"]],
+               fmt="o-", color=SERIES[2], ecolor=MUTED, elinewidth=1.5, capsize=3, ms=6, mec=SURFACE, mew=1.2)
+    ax.axhline(0, color=INK, lw=1, zorder=1)
+    ax.set_xlabel("conviction_floor")
+    ax.set_title("vs conviction_floor (h=1, Full+Debate)", fontsize=9.5, color=INK_2, loc="left")
+    ax.grid(axis="y", zorder=0)
+    ax.set_axisbelow(True)
+
+    fig.suptitle(title, x=0.01, ha="left", fontsize=12, fontweight="bold", color=INK)
+    fig.text(0.01, 0.90, subtitle, ha="left", fontsize=8.5, color=INK_2)
+    fig.tight_layout(rect=(0, 0, 1, 0.86))
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path

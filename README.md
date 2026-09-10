@@ -16,6 +16,8 @@ Deflated Sharpe Ratio that charges the result for every configuration searched.
 - [The claim, and what actually happened](#the-claim-and-what-actually-happened)
 - [Results](#results)
 - [Does the null hold across market regimes?](#does-the-null-hold-across-market-regimes)
+- [Risk attribution and extended benchmarks](#risk-attribution-and-extended-benchmarks)
+- [Hyperparameter sensitivity](#hyperparameter-sensitivity-is-the-null-fragile-to-any-single-choice)
 - [How to reproduce](#how-to-reproduce)
 - [Live pipeline: the same agents, running on real data today](#live-pipeline-the-same-agents-running-on-real-data-today)
 - [Architecture](#architecture)
@@ -241,6 +243,46 @@ power analysis below says this study cannot answer from 7.6 years of data.
 
 ---
 
+## Risk attribution and extended benchmarks
+
+The crash-regime finding above is one specific 82-day window. Formal risk attribution
+(`nse_agents/backtest/metrics.py`: beta, Treynor ratio, Information Ratio, upside/downside
+capture) asks the same question over the *whole* 7.6-year sample against three
+benchmarks — Nifty 50, an equal-weighted index of this study's own 10-name universe, and
+Nifty Next 50 — via `scripts/risk_attribution_report.py`
+([full table](results/improvements/risk_attribution.csv)):
+
+| Strategy | β (vs Nifty 50) | Treynor | Info. Ratio | Upside capture | Downside capture |
+|---|---|---|---|---|---|
+| Buy&Hold | 1.01 | +0.109 | +0.82 | 1.03 | 0.99 |
+| Tech+Regime | 0.56 | +0.081 | −0.18 | 0.75 | 0.73 |
+| Tech+Sent+Regime | 0.62 | +0.040 | −0.38 | 0.78 | 0.80 |
+| Full+Debate | 0.64 | +0.031 | −0.44 | 0.79 | 0.81 |
+| MeanReversion | 0.80 | −0.304 | −3.10 | 0.64 | 0.93 |
+
+**This sharpens the crash-regime finding rather than restating it — and the sharpening
+cuts against a simple "this system protects on the downside" story.** Every risk-managed
+configuration trades away real upside (0.75–0.79 upside capture) exactly as the regime
+breakdown above shows. But over the *whole* sample, downside capture is not meaningfully
+lower than upside capture for any of them — `Tech+Regime` gives up slightly *more* upside
+than it protects (0.75 vs 0.73), and `Full+Debate` protects *less* than its upside give-up
+(0.79 vs 0.81). The −1.1% vs −23.6% crash-day protection is real (it is the same 82 days,
+recomputed independently here via `beta`/capture, not restated from the earlier figure)
+but it is concentrated entirely in that one COVID window — it is not a general
+downside asymmetry present across the ~1,000 other down days in this sample. That is
+consistent with, not contradictory to, the regime section's own conclusion that the
+give-up in calm markets outweighs the crash-window protection on net.
+
+Building the benchmark series caught a real bug: a first attempt constructed the
+Nifty Next 50 / equal-weight benchmarks with a naive close-to-close `pct_change()`,
+which produced a beta of **0.002** against a real Buy&Hold portfolio of the same
+NSE stocks — it should be close to 1.0, since they share most constituents. The cause
+was a timing mismatch with this codebase's open-to-open return convention
+(`forward_return`); rebuilding the benchmark that way fixed it (beta 1.02, correlation
+0.95). Full account in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md#12-risk-attribution-hyperparameter-sensitivity-and-db-maintenance--one-benchmark-construction-bug-caught-before-it-produced-a-wrong-number).
+
+---
+
 ## Trying to make it work: nine further attempts, pre-registered
 
 The result above invites an obvious question: was that the ceiling, or just what this
@@ -316,6 +358,36 @@ threshold; nothing here manufactured a smaller one improperly.
 
 ---
 
+## Hyperparameter sensitivity: is the null fragile to any single choice?
+
+A different question from every attempt above: not *does any configuration beat
+Buy&Hold*, but *is the negative result fragile to a small number of hand-set
+parameters, or does it hold across a real range of them.* Pre-registered in
+[`PREREGISTRATION.md`](PREREGISTRATION.md) before running (a "+"-shaped design, not a
+full 4×3 factorial — cost-threshold sensitivity crossed at horizon=1, horizon
+sensitivity crossed at the reference 32bps, both reusing this study's own cached
+out-of-sample predictions wherever possible; see the addendum for the exact scope
+decisions), via `scripts/optimize_hyperparams.py`:
+
+![Hyperparameter sensitivity](results/figures/hyperparam_sensitivity.png)
+
+| Parameter | Range swept | Sharpe range | Every 95% CI |
+|---|---|---|---|
+| `horizon` (cost fixed at 32bps) | 1 / 5 / 10 / 20 days | −0.051 to +0.142 | Crosses zero |
+| `cost_threshold_bps` (horizon fixed at 1d) | 20 / 32 / 50 | −0.147 to +0.002 | Crosses zero |
+| `conviction_floor` (full debate pipeline, h=1) | 0.05 / 0.10 / 0.15 / 0.20 | +0.066 to +0.151 | Crosses zero |
+
+**No cell, anywhere in 16 configurations, clears its own Sharpe CI above zero.** The
+null is not an artefact of one hand-picked horizon, one assumed cost level, or one
+debate-escalation threshold — it holds across the full range tried for each. The one
+mildly interesting pattern (`conviction_floor=0.20`, the strictest debate gate, has the
+highest point estimate at +0.151) is exactly the kind of single favourable-looking cell
+this sweep exists to contextualise rather than headline: its own CI [−0.57, +0.90] is
+the widest of the four, consistent with debating only 2.2% of days (429 of 19,110) and
+therefore changing very little about the underlying technical-only signal.
+
+---
+
 ## How to reproduce
 
 ```bash
@@ -369,6 +441,16 @@ python -m nse_agents.cli healthcheck
 .venv/bin/python scripts/send_eod_summary.py --dry-run
 uv pip install -e ".[dashboard]"
 .venv/bin/streamlit run scripts/dashboard.py
+
+# 10. Risk attribution vs three benchmarks, and the hyperparameter sensitivity
+#     sweep (~15 min: one fresh h=10 training + a 4-floor debate pass, everything
+#     else reused from cache -- see PREREGISTRATION.md's addendum).
+.venv/bin/python scripts/risk_attribution_report.py
+.venv/bin/python scripts/optimize_hyperparams.py
+
+# 11. Paper-trading DB maintenance.
+python -m nse_agents.cli db-backup
+python -m nse_agents.cli db-vacuum
 ```
 
 To run the LLM arms on a materially more capable model instead:
@@ -490,6 +572,22 @@ against real historical closing prices, never a live order book — it exists to
 pipeline's own correctness (does state update right, do costs get charged right, does
 the report match the trade log), not to produce a number that could be mistaken for
 real trading performance.
+
+The account database runs in WAL mode (so the dashboard can read it while the live
+pipeline writes to it), and two maintenance subcommands keep it healthy as the trade log
+grows:
+
+```bash
+python -m nse_agents.cli db-backup    # timestamped, gzip-compressed, via SQLite's
+                                       # online backup API (not a plain file copy --
+                                       # unsafe under WAL's split main/-wal files)
+python -m nse_agents.cli db-vacuum    # WAL-checkpoint + VACUUM to reclaim space
+```
+
+`db-vacuum` reports three sizes, not one before/after delta — checkpointing (absorbing
+the WAL file into the main file) *grows* the file at the same moment `VACUUM` shrinks it,
+and a single delta let that cancel out into a misleading number during testing (see
+[`KNOWN_ISSUES.md` #12](KNOWN_ISSUES.md#12-risk-attribution-hyperparameter-sensitivity-and-db-maintenance--one-benchmark-construction-bug-caught-before-it-produced-a-wrong-number)).
 
 ### Ensemble sentiment, health checks, notifications, and a dashboard
 

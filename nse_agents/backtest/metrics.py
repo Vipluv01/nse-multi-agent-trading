@@ -176,6 +176,141 @@ def classification_metrics(y_true: np.ndarray, prob: np.ndarray) -> dict:
     }
 
 
+
+# ---- benchmark-relative risk attribution -----------------------------------------
+#
+# Everything above this point is a single-series statistic. These four need a second,
+# paired return series (a benchmark) and are kept as standalone functions rather than
+# folded into ``Performance`` -- ``compute_performance`` has no benchmark parameter,
+# and giving it one would mean every existing call site either passes a benchmark it
+# doesn't have or the field silently sits at a placeholder value. A benchmark-aware
+# caller asks for these explicitly instead.
+#
+# All four require ``returns`` and ``benchmark_returns`` to already be aligned to the
+# same dates, same length, in order -- callers already do this (e.g. via the aligned
+# frame ``align_results`` in engine.py produces), so realigning here would either
+# silently assume an alignment that doesn't hold or duplicate that logic a second time.
+#
+# **The benchmark series must use the same open-to-open convention as the portfolio
+# returns** (``nse_agents.data.prices.forward_return``), not a naive close-to-close
+# ``pct_change()``. Building this module, a benchmark built the naive way against a
+# real Buy&Hold portfolio of the same stocks produced a correlation of 0.002 and a beta
+# of 0.002 -- both should be close to 1.0, since the portfolio and the index share most
+# of their constituents. Switching to ``forward_return`` fixed it: correlation 0.95,
+# beta 1.02. The bug was never in these functions; it is exactly the trap a caller who
+# builds their own benchmark series is one line away from falling into, which is why
+# this is stated here rather than assumed obvious.
+
+
+def _paired(returns: np.ndarray, benchmark_returns: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    returns = np.asarray(returns, dtype=float)
+    benchmark_returns = np.asarray(benchmark_returns, dtype=float)
+    if returns.shape != benchmark_returns.shape:
+        raise ValueError(
+            f"returns and benchmark_returns must be the same length and already "
+            f"date-aligned; got {returns.shape} vs {benchmark_returns.shape}"
+        )
+    mask = ~(np.isnan(returns) | np.isnan(benchmark_returns))
+    return returns[mask], benchmark_returns[mask]
+
+
+def beta(returns: np.ndarray, benchmark_returns: np.ndarray) -> float:
+    """Portfolio beta vs the benchmark: Cov(r, b) / Var(b)."""
+    r, b = _paired(returns, benchmark_returns)
+    if len(r) < 2:
+        return float("nan")
+    var_b = float(np.var(b, ddof=1))
+    if var_b < 1e-16:
+        return float("nan")  # a benchmark with ~zero variance makes beta undefined, not zero
+    cov = float(np.cov(r, b, ddof=1)[0, 1])
+    return cov / var_b
+
+
+def treynor_ratio(
+    returns: np.ndarray,
+    benchmark_returns: np.ndarray,
+    risk_free_annual: float = RISK_FREE_ANNUAL,
+    periods_per_year: float = TRADING_DAYS,
+) -> float:
+    """Annualised excess return per unit of *systematic* (market) risk, unlike
+    Sharpe's per unit of *total* risk. Undefined (NaN, not zero or infinity)
+    when beta is undefined or is ~0 -- dividing by a near-zero beta would
+    produce an arbitrarily large, meaningless ratio, exactly the kind of
+    silent-precision failure this project's discipline exists to avoid.
+    """
+    r, b = _paired(returns, benchmark_returns)
+    if len(r) < 2:
+        return float("nan")
+    portfolio_beta = beta(r, b)
+    if not np.isfinite(portfolio_beta) or abs(portfolio_beta) < 1e-8:
+        return float("nan")
+    period_rf = (1.0 + risk_free_annual) ** (1.0 / periods_per_year) - 1.0
+    ann_excess = float((r - period_rf).mean() * periods_per_year)
+    return ann_excess / portfolio_beta
+
+
+def information_ratio(
+    returns: np.ndarray,
+    benchmark_returns: np.ndarray,
+    periods_per_year: float = TRADING_DAYS,
+) -> float:
+    """Annualised active return (vs the benchmark) per unit of tracking error.
+    Unlike Sharpe, this is benchmark-relative throughout -- no risk-free rate
+    involved, since "active return" is already a return in excess of
+    something (the benchmark), not of cash.
+
+    Two ~zero-tracking-error cases are handled differently, and conflating
+    them was a real bug caught by this module's own tests: *no active
+    return either* (the series ARE each other -- zero decisions, IR is
+    trivially 0) is not the same case as *a nonzero, near-riskless active
+    return* (a constant excess with ~0 variance -- an edge with no measured
+    risk, which is an ill-defined ratio to report as a finite number, not a
+    genuine zero). The second case returns NaN, matching how
+    ``treynor_ratio`` refuses to divide by a near-zero beta.
+    """
+    r, b = _paired(returns, benchmark_returns)
+    if len(r) < 2:
+        return float("nan")
+    active = r - b
+    tracking_error = float(active.std(ddof=1))
+    if tracking_error < 1e-12:
+        if abs(float(active.mean())) < 1e-12:
+            return 0.0  # genuinely tracking the benchmark: no active return, no active risk
+        return float("nan")  # a nonzero "riskless" edge is undefined, not a real zero
+    return float(active.mean() * periods_per_year) / (tracking_error * np.sqrt(periods_per_year))
+
+
+def upside_capture_ratio(returns: np.ndarray, benchmark_returns: np.ndarray) -> float:
+    """Mean portfolio return on days the benchmark rose, divided by the
+    benchmark's own mean return on those same days. 1.0 = captures the
+    market's upside exactly; below 1.0 = gives some of it up.
+    """
+    r, b = _paired(returns, benchmark_returns)
+    up = b > 0
+    if not up.any():
+        return float("nan")
+    bench_up_mean = float(b[up].mean())
+    if abs(bench_up_mean) < 1e-12:
+        return float("nan")
+    return float(r[up].mean()) / bench_up_mean
+
+
+def downside_capture_ratio(returns: np.ndarray, benchmark_returns: np.ndarray) -> float:
+    """Mean portfolio return on days the benchmark fell, divided by the
+    benchmark's own mean return on those same days. Below 1.0 = the strategy
+    lost *less* than the market on down days -- real downside protection, the
+    same mechanism the crash-regime analysis (scripts/regime_analysis.py)
+    measures directly rather than via this ratio's benchmark-day definition.
+    """
+    r, b = _paired(returns, benchmark_returns)
+    down = b < 0
+    if not down.any():
+        return float("nan")
+    bench_down_mean = float(b[down].mean())
+    if abs(bench_down_mean) < 1e-12:
+        return float("nan")
+    return float(r[down].mean()) / bench_down_mean
+
 def equity_curve(returns: np.ndarray, dates: pd.DatetimeIndex) -> pd.DataFrame:
     eq = np.cumprod(1.0 + np.nan_to_num(returns))
     return pd.DataFrame({"date": dates, "equity": eq, "drawdown": drawdown_series(np.nan_to_num(returns))})
