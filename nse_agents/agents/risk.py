@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..config import SETTINGS, CostModel
+from .circuit_breaker import CircuitBreakerTrigger
 
 TRADING_DAYS = 252
 
@@ -69,9 +70,23 @@ class RiskManager:
         confidence: float,
         realized_vol: float | None,
         state: RiskState,
+        circuit_trigger: CircuitBreakerTrigger | None = None,
     ) -> tuple[float, list[str]]:
-        """Turn a combined score into a target weight, with an audit trail."""
+        """Turn a combined score into a target weight, with an audit trail.
+
+        ``circuit_trigger``, if given and fired, overrides everything below it
+        unconditionally -- including an already-positive score and confidence
+        comfortably above the floor. This is the one place in the risk layer
+        where "the specialists still like this name" is deliberately not
+        consulted: a circuit breaker that could be outvoted by the rest of the
+        combined opinion would not be an instant trigger, it would just be
+        another vote with extra steps.
+        """
         notes: list[str] = []
+
+        if circuit_trigger is not None and circuit_trigger.triggered:
+            return 0.0, [f"[circuit breaker] {circuit_trigger.reason}; instant "
+                         f"de-risk overrides score and confidence"]
 
         if score <= 0:
             return 0.0, ["score not positive; long-only book stays flat"]

@@ -401,3 +401,52 @@ findings in the study's own cached price data worth a permanent record.
   October 2019 whistleblower-complaint sell-off, not a data artefact. The finding is
   reported as "possible," not asserted, for exactly this reason: **the tool flags for
   human review, it does not diagnose.** Full log: `logs/data_audit.log`.
+
+## 14. A circuit breaker, schema migrations, and a LaTeX paper generator — none required a real bug fix, but two design decisions are worth recording
+
+This round added an instant gap-down/ATR de-risking circuit breaker
+(`nse_agents/agents/circuit_breaker.py`), a versioned SQLite schema migration engine
+(`nse_agents/live/migrations.py`, `python -m nse_agents.cli db-migrate`), and an
+academic LaTeX paper generator (`scripts/generate_paper.py` → `results/paper.tex`).
+No new bug surfaced in this round's own tests, but two decisions are worth stating
+plainly so a future reader doesn't have to re-derive them:
+
+- **The circuit breaker complements `RegimeAgent`, it does not replace or "fix" it.**
+  Last round's stress-test finding (#13) was that the regime overlay is a slow-turning
+  trend signal that does not de-risk on a single flash-crash day. That is not a defect
+  — averaging four medium-term votes is exactly what makes the overlay robust to
+  single-day noise, and a mechanism built to react instantly to one bad day needs to
+  live *outside* that average, not inside it. `CircuitBreaker.check()` is wired into
+  `RiskManager.size()` as an unconditional override (`circuit_trigger`, checked before
+  the score/confidence gate) specifically so it cannot be outvoted by a still-bullish
+  combined opinion — a circuit breaker that could be argued out of firing by the rest
+  of the vote would not be an instant trigger, it would just be another vote with
+  extra steps. `tests/test_circuit_breaker.py`'s last test feeds the exact -10% return
+  `scripts/stress_test_scenarios.py` defines for its own Flash Crash scenario through
+  the gap-down check and confirms it fires immediately, where the regime-only pipeline
+  did not.
+- **The ATR calculation is causal for the same reason the data audit's outlier
+  z-score is** (`shift(1)`, so today's own huge range can never inflate the reference
+  it is being measured against) — the identical discipline applied a second time in
+  the same codebase, not a new pattern.
+- **`executescript` cannot be wrapped in a manual `BEGIN`/`COMMIT`** — it implicitly
+  commits any open transaction before it runs and does not itself open one, so an
+  earlier draft's manual transaction wrapper around it would have silently done
+  nothing. Each migration's SQL is required to be a single, self-contained DDL
+  statement instead (DDL is atomic in SQLite on its own), documented in
+  `migrations.py`'s own module docstring rather than left as a trap for the next
+  migration author.
+- **The LaTeX paper generator's citations are deliberately incomplete.** `REFERENCES`
+  in `scripts/generate_paper.py` lists the same five papers, at the same level of
+  detail (title, venue, year), that README.md's "Relation to the literature" table
+  already uses — no DOI, volume, issue, or page range is invented, because none is
+  recorded anywhere else in this repository. A paper generator that filled those in
+  with plausible-looking placeholders to look more complete would be fabricating
+  academic citation metadata, not compiling a real one; `tests/test_generate_paper.py`
+  asserts none of that pattern appears in the output.
+- **This environment has no LaTeX toolchain** (`pdflatex`/`xelatex` not installed),
+  so `results/paper.tex`'s actual compilation has never been verified end-to-end —
+  only structural sanity (balanced braces and environments, every table row's cell
+  count matching its declared column count) is tested. Compiling it for real is a
+  step left to a human with a TeX installation, stated as unverified rather than
+  assumed to work.
