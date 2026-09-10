@@ -171,6 +171,26 @@ def cmd_db_vacuum(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit_data(args: argparse.Namespace) -> int:
+    from .data.audit import LOG_PATH, audit_universe, findings_to_frame, write_report
+
+    print("running price-data audit...", flush=True)
+    findings = audit_universe()
+    table = findings_to_frame(findings)
+    path = write_report(findings, Path(args.log) if args.log else LOG_PATH)
+
+    print(f"{'DATA AUDIT':^60}")
+    print("=" * 60)
+    if table.empty:
+        print("  no anomalies found")
+    else:
+        for kind, group in table.groupby("kind"):
+            print(f"  {kind:<36}{len(group):>6} finding(s)")
+    print("=" * 60)
+    print(f"  full report: {path}")
+    return 0
+
+
 _SUBCOMMANDS = {
     "paper-status": (
         "Show current paper-trading account state, positions and performance.",
@@ -205,6 +225,14 @@ _SUBCOMMANDS = {
         "and keep query performance from degrading as the trade log grows.",
         cmd_db_vacuum,
         lambda p: p.add_argument("--db", default=str(DEFAULT_DB_PATH)),
+    ),
+    "audit-data": (
+        "Scan cached price series for possible unadjusted corporate actions, "
+        "zero-volume/missing-trading-day gaps, stale repeated prices, and "
+        "outlier return spikes. Writes a diagnostic report to logs/data_audit.log.",
+        cmd_audit_data,
+        lambda p: p.add_argument("--log", default=None,
+                                  help="Defaults to logs/data_audit.log."),
     ),
 }
 

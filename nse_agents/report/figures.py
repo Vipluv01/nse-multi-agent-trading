@@ -389,3 +389,52 @@ def hyperparam_sensitivity(
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return path
+
+
+def monthly_return_heatmap(monthly: pd.DataFrame, path: Path, title: str, subtitle: str = "") -> Path:
+    """Year x month matrix of strategy returns, as a diverging-colour heatmap.
+
+    The one chart in this module that intentionally breaks the "fixed
+    categorical colour, never a scale" rule stated in the module docstring --
+    a heatmap's entire job is to show *magnitude and sign* across a 2D grid,
+    which a small set of named categorical colours cannot do. Everywhere else
+    in this project, colour marks *category* (which strategy, which regime);
+    here it marks *value*, which is a different, deliberate exception, not an
+    inconsistency.
+
+    ``monthly`` must be a (year x month) pivot table of fractional returns,
+    months 1-12 as columns, with NaN for a year/month not yet reached.
+    """
+    matrix = monthly.reindex(columns=range(1, 13))
+    years = matrix.index.tolist()
+    fig_height = max(2.2, 0.42 * len(years) + 1.2)
+    fig, ax = plt.subplots(figsize=(9.0, fig_height))
+
+    values = matrix.to_numpy(dtype=float) * 100.0
+    vmax = np.nanmax(np.abs(values)) if np.isfinite(values).any() else 1.0
+    im = ax.imshow(values, cmap="RdYlGn", vmin=-vmax, vmax=vmax, aspect="auto")
+
+    for i in range(values.shape[0]):
+        for j in range(values.shape[1]):
+            v = values[i, j]
+            if np.isnan(v):
+                continue
+            # Text colour flips near the extremes of the scale, where the
+            # background is darkest, so the number stays legible either way.
+            text_colour = SURFACE if abs(v) > vmax * 0.6 else INK
+            ax.text(j, i, f"{v:+.1f}", ha="center", va="center", fontsize=7.5, color=text_colour)
+
+    ax.set_xticks(range(12), ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
+    ax.set_yticks(range(len(years)), years)
+    ax.tick_params(length=0)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    cbar = fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02)
+    cbar.set_label("Monthly return (%)", color=INK_2, fontsize=8.5)
+    cbar.ax.tick_params(labelsize=7.5, color=INK_2, labelcolor=INK_2)
+    _finish(ax, title, subtitle)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path

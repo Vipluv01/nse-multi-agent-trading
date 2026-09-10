@@ -1,0 +1,5 @@
+scenario,verdict,detail
+Flash Crash,DID NOT DE-RISK,70% of names flat (1-day zero-shock control: 70%); mean size 0.060 (control 0.060); mean regime stance -0.27
+Prolonged Bear Market,DE-RISKED,100% of names flat (126-day zero-shock control: 50%); mean size 0.000 (control 0.100); mean regime stance -0.61
+Volatility Spike,NO EFFECT,"mean confidence 0.299 (15-day zero-shock control: 0.443); mean size 0.060 (control 0.060) -- a confidence cut alone need not clear the risk manager's min_confidence floor, so 'reduced' is not necessarily 'flat'"
+Flash Rally,NO FALSE DE-RISK,70% of names flat (1-day zero-shock control: 70%)
