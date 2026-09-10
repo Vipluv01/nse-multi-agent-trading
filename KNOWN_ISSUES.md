@@ -220,3 +220,36 @@ mocked responses, but have never been run against a live API (no key in this
 environment) — a genuine end-to-end run could still surface something the mocks don't
 capture, the same way the two bugs above only surfaced once real, non-walk-forward data
 was pushed through the pipeline.
+
+---
+
+## 10. Persistent paper trading caught two more real bugs — one of them self-inflicted mid-fix
+
+Building the SQLite-backed portfolio tracker, the mock broker, and the CLI/report
+surfaces around them (`nse_agents/live/state_store.py`, `mock_broker.py`, `engine.py`,
+`cli.py`, `scripts/generate_paper_report.py`) surfaced two more real defects:
+
+- **An annualised Sharpe from a handful of tracked days is not a conservative estimate,
+  it is a meaningless one.** The first version of `paper-status` computed one anyway —
+  a 2-day sample produced **"+62.33"**, plus a numpy `RuntimeWarning: Degrees of freedom
+  <= 0`. Fixed by withholding Sharpe (and the Buy&Hold comparison) until 60+ days are
+  tracked, reporting cumulative return and max drawdown in the meantime instead — the
+  same discipline `scripts/regime_analysis.py` already applies to the 82-day crash
+  regime, applied here to a live account for the same reason.
+- **Cumulative return and max drawdown, describing the same account, disagreed.** The
+  headline "Total return" figure marks positions at *today's live price*; the first
+  drawdown computation used only the *recorded* equity-history snapshots (written at
+  each rebalance), so an account that fell in value since its last rebalance showed
+  `-2.03%` cumulative return next to `0.00%` max drawdown — the live drop was invisible
+  to the metric computing "worst point so far." Fixed by including today's live
+  mark-to-market as the final point in the drawdown path, in both `cli.py` and
+  `scripts/generate_paper_report.py`; regression-tested via the invariant that
+  |cumulative return| can never exceed |max drawdown| from the same starting capital.
+
+**A self-inflicted third issue, worth recording precisely because it was self-inflicted:**
+the first attempt at fixing the drawdown computation introduced a genuine
+`IndentationError` — a comment block and three assignment lines left outside the `if`
+they were meant to be inside, in both files identically, since one was copy-pasted from
+the other. `ast.parse()` on each file catches this class of error immediately and cheaply;
+it is now a explicit step before treating any manual edit here as done, not just before
+committing.

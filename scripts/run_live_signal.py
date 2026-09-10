@@ -34,7 +34,10 @@ from nse_agents.agents.sentiment import SentimentAgent
 from nse_agents.agents.technical import TechnicalAgent
 from nse_agents.agents.trader import Trader, TraderConfig
 from nse_agents.config import RESULTS
+from nse_agents.live.engine import rebalance
+from nse_agents.live.mock_broker import MockBroker
 from nse_agents.live.snapshot import build_live_snapshot
+from nse_agents.live.state_store import DEFAULT_DB_PATH, PaperTradingStore
 
 OUT = RESULTS / "paper_trading"
 
@@ -48,6 +51,13 @@ def main() -> int:
     ap.add_argument("--disagreement-metric", default="conviction", choices=["raw", "zscore", "conviction"])
     ap.add_argument("--cost-aware", action="store_true", default=True)
     ap.add_argument("--no-cost-aware", dest="cost_aware", action="store_false")
+    ap.add_argument("--persist", action="store_true",
+                     help="Apply today's target weights to the persistent paper-trading "
+                          "account (via MockBroker) and update its state. Without this "
+                          "flag, the run only prints and writes the signal JSON -- "
+                          "nothing about the account changes.")
+    ap.add_argument("--db", default=str(DEFAULT_DB_PATH))
+    ap.add_argument("--initial-capital", type=float, default=1_000_000.0)
     args = ap.parse_args()
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -108,6 +118,24 @@ def main() -> int:
     for row in report:
         print(f"{row['symbol']:12s} {row['action']:6s} {row['score']:+7.3f} {row['size']:7.3f}")
     print(f"\nfull rationale written to {out_path}")
+
+    if args.persist:
+        # Target weights straight from the trader's own sizing -- a FLAT/HOLD
+        # decision already carries size=0.0, so it needs no special-casing here:
+        # rebalance() treats an absent or zero weight identically.
+        target_weights = {row["symbol"]: row["size"] for row in report}
+        store = PaperTradingStore(Path(args.db), initial_capital=args.initial_capital)
+        broker = MockBroker()
+        result = rebalance(store, broker, target_weights, snapshot.as_of)
+
+        print(f"\n--- paper account updated ({len(result.fills)} fill(s)) ---")
+        for fill in result.fills:
+            print(f"  {fill.symbol:12s} {fill.side:4s} {fill.quantity:8.2f} @ "
+                  f"Rs {fill.price:8.2f}  (cost Rs {fill.cost:.2f})")
+        print(f"  total equity: Rs {result.total_equity:,.2f}")
+        print(f"  state: {args.db}")
+        print(f"  see current status with: python -m nse_agents.cli paper-status --db {args.db}")
+
     print("\nDEMONSTRATION ONLY -- see README.md: no configuration in this study has a "
           "demonstrated market-beating edge net of real costs.")
     return 0

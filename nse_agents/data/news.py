@@ -182,6 +182,141 @@ class GoogleNewsRSS:
         return sorted(items, key=lambda i: i.date)
 
 
+class LocalRSSAggregator:
+    """Point-in-time headlines from Indian financial news RSS feeds.
+
+    A second, independent source alongside ``GoogleNewsRSS`` -- broad category
+    feeds (all-market or all-stocks), not per-symbol search results, so
+    headlines are filtered client-side against ``COMPANY_NAMES`` after
+    fetching. Feed availability was checked directly, not assumed:
+
+    * **Economic Times** -- works cleanly, no special headers needed.
+    * **Moneycontrol** -- returns HTTP 403 to a scripted client even with a
+      full browser header set (User-Agent, Accept, Referer all tried). Kept
+      registered here, clearly marked broken, rather than silently dropped:
+      the fix is unknown (likely a stronger anti-bot measure than a header
+      change can clear), not a matter of trying harder with headers.
+
+    Timestamps come from ``feedparser``'s parsed struct_time, which already
+    normalises each feed's own timezone (IST, +05:30) to UTC -- unlike
+    ``GoogleNewsRSS``, which parses GMT-only pubDates by hand, this source
+    would silently mis-attribute headlines by 5.5 hours without that
+    normalisation.
+    """
+
+    FEEDS: dict[str, str] = {
+        "economic_times_markets": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
+        "economic_times_stocks": "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
+        "moneycontrol_markets": "https://www.moneycontrol.com/rss/marketreports.xml",  # 403, kept for the record
+    }
+    BROKEN_SOURCES = {"moneycontrol_markets"}
+
+    def __init__(self, pause: float = 0.8, timeout: int = 15):
+        self.pause = pause
+        self.timeout = timeout
+
+    def _fetch_one(self, source: str, url: str) -> list[dict]:
+        import feedparser
+
+        req = urllib.request.Request(url, headers=_UA)
+        try:
+            raw = urllib.request.urlopen(req, timeout=self.timeout).read()
+        except (urllib.error.URLError, TimeoutError) as exc:
+            return [{"_error": f"{source}: {type(exc).__name__} {exc}"}]
+
+        parsed = feedparser.parse(raw)
+        out = []
+        for entry in parsed.entries:
+            if "published_parsed" not in entry or entry.published_parsed is None:
+                continue
+            published = datetime(*entry.published_parsed[:6])  # already UTC
+            out.append(
+                {
+                    "source": source,
+                    "title": _unescape(entry.get("title", "")).strip(),
+                    "link": entry.get("link", ""),
+                    "published_utc": published,
+                }
+            )
+        return out
+
+    def fetch_all(self, symbols: tuple[str, ...] = ()) -> list[NewsItem]:
+        """Fetch every working feed once, filter to the given symbols by
+        company-name substring match, and tag each with the trading day it
+        is actionable on (reusing ``actionable_date``, applied to the
+        already-UTC-normalised timestamp)."""
+        company_terms = {s: COMPANY_NAMES.get(s, s).lower() for s in symbols} if symbols else {}
+        items: list[NewsItem] = []
+        errors: list[str] = []
+
+        for source, url in self.FEEDS.items():
+            if source in self.BROKEN_SOURCES:
+                continue
+            raw_entries = self._fetch_one(source, url)
+            for entry in raw_entries:
+                if "_error" in entry:
+                    errors.append(entry["_error"])
+                    continue
+                title_lower = entry["title"].lower()
+                matched = [
+                    sym for sym, term in company_terms.items() if term in title_lower
+                ] if company_terms else [None]
+                for symbol in matched:
+                    if symbol is None:
+                        continue
+                    items.append(
+                        NewsItem(
+                            symbol=symbol,
+                            date=actionable_date(entry["published_utc"]),
+                            title=entry["title"],
+                            source=source,
+                            url=entry["link"],
+                            published_utc=entry["published_utc"].isoformat(),
+                        )
+                    )
+            time.sleep(self.pause)
+
+        if errors:
+            import sys
+            print(f"LocalRSSAggregator: {len(errors)} feed(s) failed: {errors}", file=sys.stderr)
+        return items
+
+
+RSS_CACHE_PATH = DATA_CACHE / "news_rss.json"
+
+
+def load_rss_cache(path: Path | str = RSS_CACHE_PATH) -> list[NewsItem]:
+    path = Path(path)
+    if not path.exists():
+        return []
+    return [NewsItem(**row) for row in json.loads(path.read_text())]
+
+
+def save_rss_cache(items: Iterable[NewsItem], path: Path | str = RSS_CACHE_PATH) -> Path:
+    """Timestamp-deduplicated cache for the local RSS aggregator.
+
+    Deduplicated on (symbol, title, published_utc) rather than (symbol, date,
+    title) as ``write_corpus`` uses -- a live cache is re-fetched repeatedly
+    within the same trading day, where the historical corpus's day-level key
+    would treat two genuinely distinct headlines published hours apart as a
+    single entry if their titles happened to collide. This cache is the RSS
+    aggregator's own store, kept separate from ``headlines.jsonl`` (the
+    historical study corpus, built from Google News), so a live fetch can
+    never silently mix into or perturb the study's fixed, already-analysed
+    dataset.
+    """
+    path = Path(path)
+    existing = load_rss_cache(path)
+    keyed = {(i.symbol, i.title, i.published_utc): i for i in existing}
+    for item in items:
+        keyed[(item.symbol, item.title, item.published_utc)] = item
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([asdict(i) for i in sorted(
+        keyed.values(), key=lambda i: (i.symbol, i.published_utc)
+    )], indent=2, ensure_ascii=False))
+    return path
+
+
 class CachedCorpus:
     """Reads the JSONL corpus on disk. The provider used by every backtest."""
 
