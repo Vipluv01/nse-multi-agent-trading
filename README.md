@@ -322,7 +322,7 @@ threshold; nothing here manufactured a smaller one improperly.
 cd nse_agents
 uv venv --python 3.11 && uv pip install -e ".[dev]"
 
-.venv/bin/python -m pytest tests/ -q          # 68 tests, ~2.5min (power-analysis tests are Monte Carlo)
+.venv/bin/python -m pytest tests/ -q          # 124 tests, ~50s
 
 # 1. Price data is fetched and cached on first use (Yahoo, split/bonus adjusted).
 # 2. Headline corpus: 36,630 Indian headlines, 2016-2026. Resumable, and shardable
@@ -357,6 +357,11 @@ wait && .venv/bin/python scripts/merge_news.py
 
 # 7. Figures.
 .venv/bin/python scripts/make_figures.py
+
+# 8. Persistent paper trading (see "Persistent paper trading" below).
+.venv/bin/python scripts/run_live_signal.py --backend local --persist
+python -m nse_agents.cli paper-status
+.venv/bin/python scripts/generate_paper_report.py
 ```
 
 To run the LLM arms on a materially more capable model instead:
@@ -434,6 +439,50 @@ An **intraday cost-sensitivity check** (`scripts/cost_sensitivity.py`) reruns th
 strategies under the intraday cost schedule (~14 bps round-trip vs delivery's 32) as a
 labelled sensitivity check: MeanReversion's catastrophic -1.41 Sharpe improves to -0.20,
 but every strategy, including that one, still fails to beat Buy&Hold.
+
+### Persistent paper trading
+
+The live signal above can now also update a real, persistent account instead of just
+printing a recommendation -- a SQLite-backed portfolio (`nse_agents/live/state_store.py`)
+that tracks cash, positions (weighted-average cost basis), realised/unrealised P&L, and
+a full trade log across runs, executed through a mock broker
+(`nse_agents/live/mock_broker.py`) that reuses the project's own `CostModel` rather than
+re-encoding the STT/stamp-duty rates a second time, plus a bid-ask-spread slippage model
+on top (5 bps default, additive to `CostModel`'s own market-impact slippage -- they are
+two different real costs, not the same one under two names).
+
+```bash
+# Rebalance the paper account toward today's target weights and persist the result:
+.venv/bin/python scripts/run_live_signal.py --backend local --persist
+
+# Check current state -- balance, open positions, trade-adjusted return:
+python -m nse_agents.cli paper-status
+
+# Render a Markdown report with an equity curve and the full trade log:
+.venv/bin/python scripts/generate_paper_report.py
+```
+
+**Sharpe and drawdown are withheld below 60 tracked days**, not computed and rounded
+small -- an annualised Sharpe from a handful of days isn't a conservative estimate, it's
+a meaningless one (a 2-day sample produced "+62.33" in testing, before this floor was
+added). Cumulative return and max drawdown are shown from day one, computed over the
+*whole* equity path including today's live mark-to-market, not just the historically
+recorded rebalance-day snapshots -- computing it from recorded snapshots alone can miss
+a worse live price that hasn't triggered a rebalance yet, which is a real bug this
+session's own testing caught (see `KNOWN_ISSUES.md` #10).
+
+A second, independent headline source (`nse_agents/data/news.py`'s `LocalRSSAggregator`)
+feeds the sentiment agent from Economic Times' RSS feeds (broad market/stock feeds,
+filtered client-side by company name) rather than only Google News search. Moneycontrol's
+RSS feeds were investigated and return HTTP 403 to a scripted client even with full
+browser headers — registered in `LocalRSSAggregator.FEEDS` and clearly marked broken
+rather than silently dropped, the same pattern as the FII/DII and Zerodha items above.
+
+**This remains a demonstration, not a track record.** `MockBroker`'s fills are simulated
+against real historical closing prices, never a live order book — it exists to test the
+pipeline's own correctness (does state update right, do costs get charged right, does
+the report match the trade log), not to produce a number that could be mistaken for
+real trading performance.
 
 ---
 
