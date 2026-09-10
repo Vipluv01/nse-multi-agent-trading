@@ -14,6 +14,8 @@ walk-forward study's numbers.
 
 from __future__ import annotations
 
+import gzip
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +57,14 @@ class PaperTradingStore:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
+        # WAL, not the rollback-journal default: the dashboard (scripts/dashboard.py)
+        # now reads this same file while the live pipeline may be writing to it --
+        # exactly the concurrent read/write pattern WAL mode exists for, and it is
+        # what makes "WAL checkpointing" in db-vacuum a real operation rather than
+        # a no-op on a file that was never in WAL mode to begin with. Safe to set
+        # unconditionally: SQLite converts an existing rollback-journal file to WAL
+        # in place, and the reverse is equally safe if ever needed.
+        self._conn.execute("PRAGMA journal_mode=WAL")
         self._create_schema()
         self._ensure_account(initial_capital)
 
@@ -217,3 +227,79 @@ class PaperTradingStore:
         )
         self._conn.commit()
         return snap
+
+    # ---- maintenance ------------------------------------------------------
+
+    def backup(self, backup_dir: Path | str | None = None) -> Path:
+        """A timestamped, gzip-compressed, consistent backup.
+
+        Uses SQLite's own online backup API (``sqlite3.Connection.backup``),
+        not a plain file copy. A plain copy of the main ``.sqlite`` file can
+        miss committed data that only exists in the WAL file (recent writes
+        not yet checkpointed into the main file) -- exactly the failure mode
+        WAL mode's own design assumes a backup tool knows to avoid. The
+        online backup API reads through SQLite itself, so it always sees a
+        complete, consistent snapshot regardless of what's in the WAL.
+        """
+        backup_dir = Path(backup_dir) if backup_dir else self.path.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        import datetime
+
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        raw_path = backup_dir / f"{self.path.stem}_{stamp}.sqlite"
+        compressed_path = raw_path.with_suffix(raw_path.suffix + ".gz")
+
+        dest_conn = sqlite3.connect(raw_path)
+        try:
+            self._conn.backup(dest_conn)
+        finally:
+            dest_conn.close()
+
+        with raw_path.open("rb") as src, gzip.open(compressed_path, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+        raw_path.unlink()  # keep only the compressed copy
+
+        return compressed_path
+
+    def vacuum(self) -> dict:
+        """WAL checkpoint (flush and truncate the WAL file into the main
+        database) followed by ``VACUUM`` (rebuild the file, reclaiming space
+        from deleted rows and defragmenting).
+
+        Reported as three sizes, not a single before/after delta: checkpointing
+        *moves* data from the ``-wal`` file into the main file, which legitimately
+        **grows** the main file on disk (a small, mostly-empty database can easily
+        show a negative "reclaimed" figure if only the pre-checkpoint and
+        post-vacuum sizes are compared, since the WAL absorption and the VACUUM
+        compaction pull in opposite directions and a two-point measurement
+        conflates them into one misleading delta). Splitting the two makes what
+        each step actually did visible rather than asserting a net number that
+        can read as "vacuum failed" when it did exactly what it should.
+
+        ``wal_log_frames``/``wal_checkpointed_frames`` can both read 0 even when
+        ``checkpoint_grew_file_by_bytes`` is nonzero -- SQLite auto-checkpoints
+        the WAL on its own past a page threshold, independent of this method, so
+        an explicit checkpoint call can find nothing left to do while the file
+        size still reflects growth from that earlier, automatic checkpoint.
+        """
+        size_before_checkpoint = self.path.stat().st_size if self.path.exists() else 0
+
+        checkpoint = self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        busy, log_frames, checkpointed_frames = checkpoint
+        size_after_checkpoint = self.path.stat().st_size if self.path.exists() else 0
+
+        self._conn.execute("VACUUM")
+        self._conn.commit()
+        size_after_vacuum = self.path.stat().st_size if self.path.exists() else 0
+
+        return {
+            "size_before_checkpoint_bytes": size_before_checkpoint,
+            "size_after_checkpoint_bytes": size_after_checkpoint,
+            "size_after_vacuum_bytes": size_after_vacuum,
+            "checkpoint_grew_file_by_bytes": size_after_checkpoint - size_before_checkpoint,
+            "vacuum_reclaimed_bytes": size_after_checkpoint - size_after_vacuum,
+            "checkpoint_busy": bool(busy),
+            "wal_log_frames": log_frames,
+            "wal_checkpointed_frames": checkpointed_frames,
+        }

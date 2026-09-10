@@ -293,3 +293,59 @@ what remains unverified, stated plainly rather than left implicit:
   this project. Building and installing an actual persistent scheduled job on the
   user's machine is a different, more consequential action than adding a Python module,
   and wasn't done without being asked to.
+
+## 12. Risk attribution, hyperparameter sensitivity, and DB maintenance — one benchmark-construction bug caught before it produced a wrong number
+
+This round added benchmark-relative risk attribution (Treynor, Information Ratio,
+upside/downside capture), two extended benchmarks, a hyperparameter sensitivity sweep,
+and SQLite backup/vacuum maintenance commands. Two real bugs were caught building it,
+both by the project's own pre-existing testing discipline rather than by inspection:
+
+- **A close-vs-open timing mismatch nearly shipped a wrong beta.** The first draft of
+  the Nifty Next 50 / equal-weight-universe benchmark series (`nse_agents/backtest/benchmarks.py`)
+  was built with a naive `pct_change()` on closing prices. Checked against a real
+  Buy&Hold portfolio of this study's own NSE stocks — which should show a beta near
+  1.0, since Buy&Hold holds most of the same names — the naive benchmark produced a
+  correlation of **0.002** and a beta of **0.002**. The cause: every return series
+  elsewhere in this codebase is built open-to-open (`nse_agents.data.prices.forward_return`,
+  documented in `CLAUDE.md`'s non-obvious-rules list), and a close-to-close series is
+  one trading session out of phase with it. Rebuilding the benchmark with
+  `forward_return` fixed it — correlation 0.95, beta 1.02 for the same pair. Regression
+  test: `tests/test_benchmarks.py::test_equal_weight_universe_uses_open_to_open_not_close_to_close`.
+- **`information_ratio` silently returned "no edge" for an undefined case.** A
+  portfolio that beats its benchmark by an identical amount every single day has
+  ~zero tracking error *and* a nonzero active return — dividing one by the other is
+  undefined, not zero. The first cut special-cased near-zero tracking error to always
+  return `0.0`, which would report a genuine (if unrealistic) constant edge as "tracks
+  the benchmark exactly." Fixed to return `0.0` only when the active-return mean is
+  *also* near zero (real tracking), and `NaN` otherwise (an ill-defined ratio). Caught
+  by this module's own test suite, not by review — see
+  `tests/test_risk_attribution.py::test_information_ratio_is_nan_for_a_constant_riskless_edge`.
+- **`db-vacuum`'s first cut reported a misleading number.** A single
+  before/after file-size delta went *negative* on a real test database, because
+  WAL-checkpointing (absorbing the write-ahead log into the main file) grows the file
+  at the same time `VACUUM` shrinks it — two opposite effects, reported as one
+  confusing number. Fixed to report three separate sizes (before checkpoint, after
+  checkpoint, after vacuum) plus the two effects broken out
+  (`checkpoint_grew_file_by_bytes`, `vacuum_reclaimed_bytes`).
+- **The Nifty Next 50 ticker was verified, not assumed.** Yahoo Finance's `^NSMIDCP`
+  symbol text reads "midcap," which would be the wrong index entirely if taken at face
+  value — resolved by fetching the ticker's own quote metadata (`longName`/`shortName`),
+  which confirms "NIFTY NEXT 50." Not inferred from price level or the symbol string.
+- **Two new metrics were placed in `metrics.py`, not `stats.py`,** despite the request
+  naming `stats.py`: that module's own docstring scopes it to statistical machinery
+  (bootstrap CIs, hypothesis tests, multiple-testing correction), while Treynor/IR/beta/
+  capture ratios are point-in-time, benchmark-relative performance figures — the same
+  category as the `Performance` dataclass and `sharpe_ratio`/`max_drawdown` already in
+  `metrics.py`. Sortino and Calmar ratios, also requested, already existed in
+  `compute_performance` from an earlier round and were not rebuilt.
+- **The hyperparameter sweep is a "+"-shaped design, not a full 4×3 factorial** —
+  cost-threshold sensitivity is measured crossed at horizon=1 only, reusing the main
+  study's own cached PLSTM-TAL out-of-sample predictions; horizon sensitivity is
+  measured crossed at the reference 32bps cost only, reusing the existing
+  `horizon_label_variants.csv` cache for h=1/5/20 and training only h=10 fresh (the one
+  cell genuinely missing from the cache). A full crossed grid would have needed three
+  more multi-seed walk-forward trainings for a search space already this exhaustively
+  covered elsewhere in the study. Scope stated in `PREREGISTRATION.md` before any of
+  these numbers were seen — see the README's hyperparameter-sensitivity section for
+  the result.

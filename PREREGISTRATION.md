@@ -90,3 +90,46 @@ signals" -- it is "no edge above an unusually large threshold was found, and thi
 was not powered to see anything smaller." Extending the data window or the universe
 further is what would lower that threshold; nothing tried here manufactured a smaller
 one improperly.
+
+---
+
+## Addendum: hyperparameter sensitivity sweep (registered before running)
+
+A different question from every attempt above: not "does any configuration beat
+Buy&Hold" but "is the (negative) result fragile to a small number of hand-set
+parameters, or does it hold across a real range of them." This is overfitting
+*protection*, not a new search for alpha -- the full response surface is reported,
+never a best cell in isolation, and the same pass bar applies to anything that does
+clear it.
+
+| Parameter | Grid | What it controls |
+|---|---|---|
+| `horizon` | 1, 5, 10, 20 days | forward-return horizon the technical model predicts |
+| `cost_threshold_bps` | 20, 32, 50 | assumed round-trip transaction cost (32bps is the measured delivery rate used everywhere else) |
+| `conviction_floor` | 0.05, 0.10, 0.15, 0.20 | debate-escalation threshold (`disagreement_metric="conviction"`) |
+
+**Scope decisions, stated before results are seen:**
+- This is a "+"-shaped design, not a full 4x3 factorial: **cost-threshold sensitivity
+  is measured crossed at h=1 only**, reusing the main study's own cached PLSTM-TAL
+  out-of-sample predictions (verified to match B0's accuracy, 0.5026 on 19,110 rows,
+  before being trusted); **horizon sensitivity is measured crossed at the reference
+  32bps cost only**, reusing `horizon_label_variants.csv`'s B0/B1/B2 (h=1/5/20)
+  directly and training only h=10 fresh -- the one horizon with no existing cache. A
+  full crossed grid would need three more multi-seed walk-forward trainings purely to
+  avoid depending on an existing, already-verified cache; that compute was judged not
+  worth it for a search space this exhaustively covered by the rest of the study.
+  Every point still uses the same PLSTM-TAL architecture throughout (`TrainConfig`'s
+  default, not the main study's best-architecture plain LSTM) -- mixing architectures
+  into one "horizon response surface" would make horizon a confounded variable, so
+  this grid is about PLSTM-TAL's sensitivity specifically, not a re-statement of the
+  main study's own best-architecture numbers.
+- `conviction_floor` is swept at h=1 only (the main study's own horizon), using the
+  full debate-based orchestrator (technical + sentiment + regime + debate), reusing
+  cached technical OOS and cached sentiment data. Escalation rates were measured first
+  (2.2%-15.1% across the four floors) to confirm this is computationally tractable
+  before committing to the run.
+
+Same success criterion as every other attempt: a cell's net Sharpe 95% CI excludes
+zero AND it beats Buy&Hold after Holm correction. "The surface is flat and nothing
+clears the bar anywhere" is itself the expected, reportable outcome, not a failure of
+the sweep.
