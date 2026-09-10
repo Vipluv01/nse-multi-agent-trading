@@ -191,6 +191,32 @@ def cmd_audit_data(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_db_migrate(args: argparse.Namespace) -> int:
+    db_path = Path(args.db)
+    existed_before = db_path.exists()
+    # Connecting already runs every pending migration (see state_store.py) --
+    # this command exists so an operator can apply and see them explicitly,
+    # on their own schedule, rather than have migration happen silently as a
+    # side effect of the next incidental paper-status/run_live_signal call.
+    store = PaperTradingStore(db_path)
+    version = store.schema_version()
+    remaining = store.pending_migrations()
+
+    print(f"{'DB MIGRATE':^60}")
+    print("=" * 60)
+    if not existed_before:
+        print(f"  initialized fresh database at {db_path}")
+    print(f"  schema version: {version}")
+    if remaining:
+        print(f"  {len(remaining)} migration(s) still pending (unexpected -- report this):")
+        for m in remaining:
+            print(f"    v{m.version}: {m.description}")
+    else:
+        print("  up to date -- no pending migrations")
+    print("=" * 60)
+    return 0
+
+
 _SUBCOMMANDS = {
     "paper-status": (
         "Show current paper-trading account state, positions and performance.",
@@ -233,6 +259,12 @@ _SUBCOMMANDS = {
         cmd_audit_data,
         lambda p: p.add_argument("--log", default=None,
                                   help="Defaults to logs/data_audit.log."),
+    ),
+    "db-migrate": (
+        "Apply any pending paper-trading database schema migrations (tracked via "
+        "PRAGMA user_version), without touching existing trade logs or account state.",
+        cmd_db_migrate,
+        lambda p: p.add_argument("--db", default=str(DEFAULT_DB_PATH)),
     ),
 }
 

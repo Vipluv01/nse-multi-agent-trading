@@ -24,6 +24,7 @@ import pandas as pd
 
 from ..config import RESULTS
 from .broker import Fill
+from .migrations import current_version, pending_migrations, run_migrations
 
 DEFAULT_DB_PATH = RESULTS / "paper_trading" / "state.sqlite"
 
@@ -66,6 +67,12 @@ class PaperTradingStore:
         # in place, and the reverse is equally safe if ever needed.
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._create_schema()
+        # Base tables above are created unconditionally via CREATE TABLE IF NOT
+        # EXISTS; anything added *after* accounts already had real trade
+        # history goes through a tracked migration instead, so a database that
+        # already exists on disk is never silently left behind schema changes
+        # introduced by a later code update. See migrations.py.
+        run_migrations(self._conn)
         self._ensure_account(initial_capital)
 
     def _create_schema(self) -> None:
@@ -229,6 +236,12 @@ class PaperTradingStore:
         return snap
 
     # ---- maintenance ------------------------------------------------------
+
+    def schema_version(self) -> int:
+        return current_version(self._conn)
+
+    def pending_migrations(self) -> list:
+        return pending_migrations(self._conn)
 
     def backup(self, backup_dir: Path | str | None = None) -> Path:
         """A timestamped, gzip-compressed, consistent backup.

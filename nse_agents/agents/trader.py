@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from .base import Decision, Opinion
+from .circuit_breaker import CircuitBreakerTrigger
 from .researchers import DebateOutcome
 from .risk import RiskManager, RiskState
 
@@ -73,9 +74,10 @@ class Trader:
         debate: DebateOutcome | None,
         realized_vol: float | None,
         state: RiskState,
+        circuit_trigger: CircuitBreakerTrigger | None = None,
     ) -> Decision:
         score, confidence = self.combine(opinions, debate)
-        size, notes = self.risk.size(score, confidence, realized_vol, state)
+        size, notes = self.risk.size(score, confidence, realized_vol, state, circuit_trigger)
 
         if score > self.config.buy_threshold and size > 0:
             action = "BUY"
