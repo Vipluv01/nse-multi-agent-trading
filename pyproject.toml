@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 anthropic = ["anthropic>=0.40"]
 openai = ["openai>=1.40"]
+dashboard = ["streamlit>=1.30"]
 dev = ["pytest>=8.0"]
 
 [build-system]

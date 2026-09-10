@@ -117,11 +117,46 @@ def cmd_paper_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_healthcheck(args: argparse.Namespace) -> int:
+    from .live.healthcheck import run_all_checks
+
+    results = run_all_checks(db_path=args.db, ping_llm=args.ping_llm)
+
+    print(f"{'PRE-MARKET HEALTH CHECK':^60}")
+    print("=" * 60)
+    all_ok = True
+    for result in results:
+        status = "OK  " if result.ok else "FAIL"
+        print(f"  [{status}] {result.name}")
+        print(f"          {result.detail}")
+        all_ok = all_ok and result.ok
+    print("=" * 60)
+
+    if all_ok:
+        print("  All checks passed.")
+        return 0
+    failed = [r.name for r in results if not r.ok]
+    print(f"  {len(failed)} check(s) failed: {', '.join(failed)}")
+    return 1
+
+
 _SUBCOMMANDS = {
     "paper-status": (
         "Show current paper-trading account state, positions and performance.",
         cmd_paper_status,
         lambda p: p.add_argument("--db", default=str(DEFAULT_DB_PATH)),
+    ),
+    "healthcheck": (
+        "Validate price feed freshness, LLM key config, RSS availability, and "
+        "paper-trading DB integrity before a market-open run. Exit code 0 iff all pass.",
+        cmd_healthcheck,
+        lambda p: (
+            p.add_argument("--db", default=str(DEFAULT_DB_PATH)),
+            p.add_argument("--ping-llm", action="store_true",
+                           help="Also make a real, minimal call to any configured "
+                                "LLM provider to confirm the key actually works "
+                                "(off by default -- costs a token, not just a check)."),
+        ),
     ),
 }
 

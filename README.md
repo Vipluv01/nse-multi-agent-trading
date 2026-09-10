@@ -322,7 +322,7 @@ threshold; nothing here manufactured a smaller one improperly.
 cd nse_agents
 uv venv --python 3.11 && uv pip install -e ".[dev]"
 
-.venv/bin/python -m pytest tests/ -q          # 124 tests, ~50s
+.venv/bin/python -m pytest tests/ -q          # 178 tests, ~90s
 
 # 1. Price data is fetched and cached on first use (Yahoo, split/bonus adjusted).
 # 2. Headline corpus: 36,630 Indian headlines, 2016-2026. Resumable, and shardable
@@ -362,6 +362,13 @@ wait && .venv/bin/python scripts/merge_news.py
 .venv/bin/python scripts/run_live_signal.py --backend local --persist
 python -m nse_agents.cli paper-status
 .venv/bin/python scripts/generate_paper_report.py
+
+# 9. Health check, notifications (dry-run needs no credentials), dashboard.
+python -m nse_agents.cli healthcheck
+.venv/bin/python scripts/send_premarket_briefing.py --dry-run
+.venv/bin/python scripts/send_eod_summary.py --dry-run
+uv pip install -e ".[dashboard]"
+.venv/bin/streamlit run scripts/dashboard.py
 ```
 
 To run the LLM arms on a materially more capable model instead:
@@ -483,6 +490,53 @@ against real historical closing prices, never a live order book — it exists to
 pipeline's own correctness (does state update right, do costs get charged right, does
 the report match the trade log), not to produce a number that could be mistaken for
 real trading performance.
+
+### Ensemble sentiment, health checks, notifications, and a dashboard
+
+**Multi-provider ensemble scoring** (`nse_agents/agents/ensemble.py`) combines several
+`classify_batch`-capable backends (Anthropic + OpenAI, in principle) into one: an
+inter-provider agreement score in [0, 1] (1 − total variation distance between the two
+label distributions, averaged over every provider pair), and per-item, per-batch
+fallback — one provider's rate limit or outage does not crash the run, it just narrows
+the ensemble to whoever answered. `confidence_penalty_from_agreement` maps agreement to
+a confidence multiplier for a caller to fold in explicitly; it does not silently change
+the single-provider `SentimentAgent` pipeline every published number in this study came
+from. **Unverified against real multi-provider traffic** — no Anthropic or OpenAI key
+in this environment — tested at the same mocked-backend boundary as the individual
+hosted backends.
+
+**A pre-market health check** (`python -m nse_agents.cli healthcheck`) validates price
+feed freshness (against the real trading calendar — a 4-day threshold, not a naive
+24h one, so it doesn't false-fail every Monday morning), LLM API key configuration
+(presence, not a live ping, by default — `--ping-llm` opts into a real minimal call),
+Economic Times RSS reachability, and the paper-trading SQLite file's integrity
+(`PRAGMA integrity_check` plus the required tables). Exit code 0 iff everything passes.
+
+**Daily notifications** (`nse_agents/live/notifier.py`) — `TelegramNotifier` and
+`WebhookNotifier` (Slack or Discord), with `send_with_fallback` trying each configured
+channel in turn. Both raise a clear "not configured" error without the relevant
+credential (`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`, `NOTIFY_WEBHOOK_URL`) rather than
+silently no-op'ing, and neither has been run against a real Telegram bot or webhook in
+this environment. `build_premarket_briefing` and `build_eod_summary` are pure content
+functions (VIX/Nifty regime + top headlines; account P&L + fills + positions) —
+this module intentionally **does not schedule anything itself**; "daily at 9:00 AM /
+3:30 PM IST" is a cron or launchd job's responsibility, e.g.:
+
+```cron
+# crontab -e  (times in the system's local timezone -- adjust for IST if different)
+30 9  * * 1-5  cd /path/to/nse_agents && .venv/bin/python scripts/send_premarket_briefing.py
+0  15 * * 1-5  cd /path/to/nse_agents && .venv/bin/python scripts/send_eod_summary.py
+```
+
+**An interactive dashboard** (`.venv/bin/streamlit run scripts/dashboard.py`, install
+with `uv pip install -e ".[dashboard]"`) — Overview (equity curve, cumulative return,
+max drawdown, Sharpe withheld below the same 60-day floor as everywhere else),
+Positions & Trades (current holdings, full trade log), and Sentiment & Macro (India VIX
+/ Nifty momentum, a sentiment-score histogram from the cached corpus). All business
+logic lives in `nse_agents/live/dashboard_data.py`, which has no `streamlit` import and
+is unit-tested directly; `scripts/dashboard.py` is UI wiring only. Verified to start
+and serve without error against both an empty and a populated paper-trading account,
+not just syntax-checked.
 
 ---
 
