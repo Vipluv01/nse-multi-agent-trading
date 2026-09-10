@@ -253,3 +253,43 @@ they were meant to be inside, in both files identically, since one was copy-past
 the other. `ast.parse()` on each file catches this class of error immediately and cheaply;
 it is now a explicit step before treating any manual edit here as done, not just before
 committing.
+
+---
+
+## 11. Ensemble scoring, health checks, notifications, and a dashboard — all built, none of the network-facing parts verified live
+
+This round added a multi-provider ensemble sentiment scorer, a pre-market health check,
+Telegram/webhook notifications, and a Streamlit dashboard. What's genuinely tested vs.
+what remains unverified, stated plainly rather than left implicit:
+
+- **`EnsembleBackend`** (`nse_agents/agents/ensemble.py`): the combination math
+  (agreement via total-variation distance, per-batch fallback, the all-providers-fail
+  error path) is fully tested against stub backends. **Never run with two real,
+  simultaneous provider calls** — no Anthropic or OpenAI key in this environment, so
+  whether real-world disagreement patterns look like the synthetic test cases is
+  untested.
+- **`healthcheck`**: every check runs a real operation (a real cached-price read, a
+  real RSS HTTP request, a real `PRAGMA integrity_check`) except the LLM checks, which
+  by default only check *configuration presence* — `--ping-llm` exists for a real call
+  but has, for the same reason as above, never been exercised against a live key.
+- **`TelegramNotifier` / `WebhookNotifier`**: both raise a clear, specific
+  "not configured" error rather than silently no-op'ing, and the HTTP-call logic is
+  tested against a mocked `urllib.request.urlopen` matching each API's documented
+  response shape. **Neither has sent a single real message** — no bot token, no
+  webhook URL. Markdown escaping in particular (Telegram's `parse_mode: Markdown` is
+  fussy about unescaped `_`, `*`, `` ` ``, `[` in message text) is the most likely
+  thing to break on a first real send and should be checked then, not assumed fixed now.
+- **The Streamlit dashboard**: verified to actually start and serve (HTTP 200, zero
+  tracebacks in the server log) against both an empty and a populated paper-trading
+  account — this is a real runtime check, not just `ast.parse()`. Its business logic
+  (`nse_agents/live/dashboard_data.py`) is unit-tested directly and reuses the exact
+  same equity/drawdown computation as `cli.py` and `generate_paper_report.py`, so it
+  cannot drift into a fourth, independently-wrong version of the KNOWN_ISSUES #10 bug.
+  What is **not** tested is anything about the interactive session itself (widget
+  state, tab-switching, the symbol selector) — Streamlit's own script-rerun model
+  makes that a browser-driven test, not a pytest one.
+- **Scheduling was deliberately not built.** "Daily at 9:00 AM / 3:30 PM IST" needs a
+  cron or launchd entry (see README.md), not a background daemon silently started by
+  this project. Building and installing an actual persistent scheduled job on the
+  user's machine is a different, more consequential action than adding a Python module,
+  and wasn't done without being asked to.
