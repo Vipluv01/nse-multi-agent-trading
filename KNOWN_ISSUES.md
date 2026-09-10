@@ -349,3 +349,55 @@ both by the project's own pre-existing testing discipline rather than by inspect
   covered elsewhere in the study. Scope stated in `PREREGISTRATION.md` before any of
   these numbers were seen — see the README's hyperparameter-sensitivity section for
   the result.
+
+## 13. Synthetic stress tests, a factsheet, and a data audit — one real methodology bug caught in the stress tester itself
+
+This round added a synthetic market-stress tester (`scripts/stress_test_scenarios.py`),
+an institutional factsheet (`scripts/generate_factsheet.py`, `results/FACTSHEET.md`),
+and a price-data anomaly audit (`nse_agents/data/audit.py`,
+`python -m nse_agents.cli audit-data`). One real bug in the stress tester's own design
+was caught before it produced a misleading verdict, and the audit tool surfaced real
+findings in the study's own cached price data worth a permanent record.
+
+- **The stress tester's first draft compared every shocked scenario against a single
+  fixed "today" baseline, and that produced a false "Flash Rally de-risks AXISBANK"
+  verdict.** `rel_strength_60d` is a rolling 60-day window; evaluating a scenario one
+  or more synthetic days after the real data ends, and comparing it against a baseline
+  still anchored to the real last date, means a different real historical day drops out
+  of each stock's window — a pure calendar-shift artefact that has nothing to do with
+  the shock being tested, and it does not affect every stock identically (each stock's
+  60-days-ago return differs). Fixed by comparing every scenario against a **matched,
+  same-length, zero-return control** evaluated on the identical synthetic calendar date,
+  which removes the confound entirely. Regression test:
+  `tests/test_stress_test_scenarios.py::test_matched_control_and_shock_land_on_the_same_calendar_date`.
+- **A genuine, non-obvious finding survived that fix**: a single-day Flash Crash (-10%)
+  moves the regime overlay's stance in the right direction (the Nifty-momentum vote,
+  correctly) but is not large enough on its own to flip any name that was already
+  comfortably BUY or FLAT past `buy_threshold`. The Prolonged Bear Market scenario
+  (-30% over 126 sessions) *does* fully de-risk every name (100% flat), because a
+  sustained decline eventually drags the 200-day trend and 52-week-range votes negative
+  too, not just the momentum vote. The regime overlay is closer to a slow-turning trend
+  signal than a shock absorber for a single bad day — stated plainly in the script's own
+  output rather than left for a reader to infer from the numbers.
+- **The Volatility Spike scenario (VIX pinned to 45, prices held flat) cuts confidence
+  but not enough, on its own, to force any position flat** — `RiskManager`'s
+  `min_confidence` floor (0.10) is well below where the VIX-only confidence penalty
+  lands in this test, so a pure fear spike with no accompanying price move dampens size
+  without eliminating it. Reported as `NO EFFECT` (on the flat/non-flat action) rather
+  than silently rounded up to "de-risked."
+- **The outlier-return-spike check in the data audit tool divided by a near-zero
+  rolling standard deviation** on its own unit-test fixture (a smooth, deterministic
+  daily-growth series) before a floor was added — the same division-by-near-nothing
+  failure mode already fixed once this project for `information_ratio` (#12 above).
+  Fixed with an explicit `MIN_MEANINGFUL_STD` floor below which no z-score is computed.
+- **The audit tool's real findings against this study's own cached data are worth
+  recording**: 77 zero-volume rows, clustered on exactly 5 calendar dates shared across
+  *every* universe symbol (2025-03-18, 2026-01-15, 2026-05-01, 2026-05-28,
+  2026-06-26) — consistent with Yahoo returning a placeholder row for exchange holidays
+  rather than omitting the date; 26 statistically unusual single-day moves; and 2
+  single-name moves flagged as a *possible* unadjusted corporate action (INFY -16.2% on
+  2019-10-22, SBIN +27.7% on 2017-10-25) that the tool cannot, on price data alone,
+  distinguish from a real company-specific event — INFY's move lines up with the real
+  October 2019 whistleblower-complaint sell-off, not a data artefact. The finding is
+  reported as "possible," not asserted, for exactly this reason: **the tool flags for
+  human review, it does not diagnose.** Full log: `logs/data_audit.log`.
