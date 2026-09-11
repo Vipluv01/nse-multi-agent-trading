@@ -335,6 +335,70 @@ def cmd_export_metrics(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_compare_models(args: argparse.Namespace) -> int:
+    """Side-by-side comparison, read entirely from already-published cached
+    tables -- no backtest is re-run, no number here can differ from what
+    README.md and results/agents/summary.csv already report."""
+    summary_path = RESULTS / "agents" / "summary.csv"
+    if not summary_path.exists():
+        print(f"no cached ablation summary at {summary_path} -- run scripts/run_agents.py first.")
+        return 1
+    summary = pd.read_csv(summary_path).set_index("strategy")
+
+    vs_bh_path = RESULTS / "agents" / "vs_buyhold.csv"
+    vs_bh = pd.read_csv(vs_bh_path).set_index("strategy") if vs_bh_path.exists() else pd.DataFrame()
+
+    names = [args.model1, args.model2]
+    missing = [n for n in names if n not in summary.index]
+    if missing:
+        print(f"unknown strategy/strategies {missing}; available: {sorted(summary.index)}")
+        return 1
+
+    def p_holm_vs_buyhold(name: str) -> float | None:
+        # Buy&Hold compared against itself has no p-value -- it IS the
+        # baseline every other row's p_holm is already measured against.
+        if name == "Buy&Hold" or name not in vs_bh.index:
+            return None
+        return float(vs_bh.loc[name, "p_holm"])
+
+    rows = [
+        ("Net Sharpe", "Sharpe(net,excess)", "{:+.3f}"),
+        ("CAGR", "CAGR", "{:+.2%}"),
+        ("Max Drawdown", "MaxDD", "{:.2%}"),
+        ("Annual Turnover", "Turnover/yr", "{:.2f}x"),
+    ]
+
+    def fmt_p(name: str) -> str:
+        if name == "Buy&Hold":
+            return "n/a (is Buy&Hold)"
+        p = p_holm_vs_buyhold(name)
+        return f"{p:.4f}" if p is not None else "n/a (not in cache)"
+
+    # One column width for every row, including the longest formatted cell
+    # (the "n/a (is Buy&Hold)" label is longer than any name or number) --
+    # sizing on names alone left that row visibly misaligned.
+    all_cells = [n for n in names] + [fmt_p(n) for n in names] + [
+        fmt.format(summary.loc[n, column]) for label, column, fmt in rows for n in names
+    ]
+    col_width = max(len(c) for c in all_cells) + 2
+
+    header = f"{'Metric':<22}" + "".join(f"{n:>{col_width}}" for n in names)
+    print(header)
+    print("-" * len(header))
+    for label, column, fmt in rows:
+        cells = "".join(f"{fmt.format(summary.loc[n, column]):>{col_width}}" for n in names)
+        print(f"{label:<22}{cells}")
+
+    p_cells = "".join(f"{fmt_p(n):>{col_width}}" for n in names)
+    print(f"{'Holm p vs Buy&Hold':<22}{p_cells}")
+
+    print()
+    print("Holm p < 0.05 means that strategy beats Buy&Hold significantly, after")
+    print("correcting for every configuration this study searched (see PREREGISTRATION.md).")
+    print("DEMONSTRATION ONLY -- reads already-published walk-forward results; runs no new evaluation.")
+    return 0
+
+
 _SUBCOMMANDS = {
     "paper-status": (
         "Show current paper-trading account state, positions and performance.",
@@ -397,6 +461,16 @@ _SUBCOMMANDS = {
                                  "(e.g. Full+Debate, Tech+Regime, Buy&Hold, MACD)."),
             p.add_argument("--format", choices=["json", "csv"], default="json"),
             p.add_argument("--output", default=str(DEFAULT_EXPORT_PATH)),
+        ),
+    ),
+    "compare-models": (
+        "Side-by-side terminal comparison of two strategies from the main ablation "
+        "or classical baselines: Net Sharpe, CAGR, Max Drawdown, Annual Turnover, "
+        "and the Holm-corrected p-value vs Buy&Hold. Reads only already-cached results.",
+        cmd_compare_models,
+        lambda p: (
+            p.add_argument("--model1", default="Full+Debate"),
+            p.add_argument("--model2", default="Tech+Regime"),
         ),
     ),
 }
