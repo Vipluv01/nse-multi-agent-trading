@@ -1,0 +1,86 @@
+name: CI
+
+# Two independent jobs, not one: the test suite needs only Python + this
+# project's own deps and runs in well under a minute; the LaTeX job needs a
+# full TeX Live image (hundreds of MB) purely to verify results/paper.tex
+# still compiles. Splitting them means a LaTeX-toolchain outage doesn't block
+# the (much more load-bearing) test-suite signal, and vice versa.
+#
+# Every result table scripts/generate_paper.py reads (architecture_summary.csv,
+# agents/summary.csv, sharpe_intervals.csv, hyperparam_*.csv) is committed to
+# this repo -- the PDF job never re-runs training, sentiment scoring, or the
+# debate pass, it only re-renders already-published numbers.
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        # [dashboard] too, not just [dev] -- so tests/test_dashboard_render.py's
+        # real Streamlit AppTest coverage actually runs in CI instead of
+        # skipping via pytest.importorskip("streamlit").
+        run: pip install -e ".[dev,dashboard]"
+
+      - name: Run tests
+        run: pytest tests/ -q
+        # Tests gated on locally-cached-but-gitignored artifacts (per-headline
+        # sentiment scores, per-decision debate dumps -- too bulky to commit,
+        # see .gitignore's comment) skip cleanly here via their own
+        # @pytest.mark.skipif(not path.exists()) guards, each with a stated
+        # reason -- this is expected in CI, not a gap this workflow needs to
+        # paper over.
+
+  paper-pdf:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Generate results/paper.tex
+        run: python scripts/generate_paper.py
+
+      - name: Compile LaTeX to PDF
+        # A full TeX Live image (unlike the TinyTeX + `tlmgr install ieeetran`
+        # combination documented in KNOWN_ISSUES.md #14 for local development)
+        # already ships the IEEEtran class, so no extra package step is needed
+        # here.
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: results/paper.tex
+          working_directory: .
+          latexmk_use_xelatex: false
+
+      - name: Verify a real, non-trivial PDF was produced
+        run: |
+          test -s results/paper.pdf
+          size=$(stat -c%s results/paper.pdf 2>/dev/null || stat -f%z results/paper.pdf)
+          if [ "$size" -lt 10000 ]; then
+            echo "paper.pdf exists but is suspiciously small ($size bytes)"
+            exit 1
+          fi
+          head -c 5 results/paper.pdf | grep -q "%PDF-" || (echo "not a valid PDF" && exit 1)
+
+      - name: Upload compiled PDF as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-pdf
+          path: results/paper.pdf
