@@ -210,9 +210,12 @@ assembles the same architecture-ablation, gross-vs-net, multi-agent/Deflated-Sha
 hyperparameter-sensitivity tables into an IEEE-conference-shaped LaTeX writeup
 (`results/paper.tex`) — its citations list exactly the five papers this README's
 "Relation to the literature" table already names, at the same level of detail, rather
-than inventing DOIs or page numbers this project has never recorded; **its actual
-compilation is unverified**, since this environment has no LaTeX toolchain (see
-[`KNOWN_ISSUES.md` #14](KNOWN_ISSUES.md#14-a-circuit-breaker-schema-migrations-and-a-latex-paper-generator--none-required-a-real-bug-fix-but-two-design-decisions-are-worth-recording)).
+than inventing DOIs or page numbers this project has never recorded. **Compilation is
+verified**, not just structurally checked: [`results/paper.pdf`](results/paper.pdf) is
+a real, committed 2-page PDF, compiled with TinyTeX (`pdflatex` + `tlmgr install
+ieeetran`, no `sudo` needed) and checked for zero fatal LaTeX errors — see
+[`KNOWN_ISSUES.md` #14](KNOWN_ISSUES.md#14-a-circuit-breaker-schema-migrations-and-a-latex-paper-generator--none-required-a-real-bug-fix-but-two-design-decisions-are-worth-recording)
+for exactly what that checked and what it didn't.
 `scripts/generate_model_cards.py` writes [`results/MODEL_CARDS.md`](results/MODEL_CARDS.md),
 one Mitchell et al. (2019)-style model card per core agent component
 (`TechnicalAgent`, `SentimentAgent`, `RegimeAgent`, the debate engine) — every

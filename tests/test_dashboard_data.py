@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nse_agents.live.dashboard_data import (
+    backtest_ablation_table,
     compute_overview_stats,
     load_account_state,
     macro_regime_indicator,
@@ -121,3 +122,18 @@ def test_macro_regime_indicator_handles_a_symbol_with_no_rows():
                           "vix": [15.0], "vix_percentile": [0.4], "nifty_mom_20d": [0.02]})
     result = macro_regime_indicator(table, "RELIANCE")  # not in the table
     assert result["vix"] is None
+
+
+def test_backtest_ablation_table_returns_empty_frame_when_summary_is_missing(tmp_path):
+    result = backtest_ablation_table(tmp_path)  # no agents/summary.csv under tmp_path
+    assert result.empty
+
+
+def test_backtest_ablation_table_reads_the_real_cached_summary_unmodified(tmp_path):
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    summary = pd.DataFrame({"strategy": ["Buy&Hold", "Full+Debate"], "Sharpe(net,excess)": [0.58, 0.13]})
+    summary.to_csv(agents_dir / "summary.csv", index=False)
+
+    result = backtest_ablation_table(tmp_path)
+    pd.testing.assert_frame_equal(result, summary)

@@ -275,19 +275,35 @@ what remains unverified, stated plainly rather than left implicit:
 - **`TelegramNotifier` / `WebhookNotifier`**: both raise a clear, specific
   "not configured" error rather than silently no-op'ing, and the HTTP-call logic is
   tested against a mocked `urllib.request.urlopen` matching each API's documented
-  response shape. **Neither has sent a single real message** — no bot token, no
-  webhook URL. Markdown escaping in particular (Telegram's `parse_mode: Markdown` is
+  response shape. **Still true as of this update: neither has sent a single real
+  message** — no bot token, no webhook URL in this environment, and creating a
+  Telegram bot requires a human's own phone/account, not something that can be done
+  from here. Markdown escaping in particular (Telegram's `parse_mode: Markdown` is
   fussy about unescaped `_`, `*`, `` ` ``, `[` in message text) is the most likely
-  thing to break on a first real send and should be checked then, not assumed fixed now.
+  thing to break on a first real send and should be checked then, not assumed fixed
+  now. What changed this round: `nse_agents/live/notifier.py` now loads a `.env` file
+  automatically (`_load_dotenv`, gitignored, never committed), and
+  `tests/test_notifier.py::test_telegram_bot_token_is_real_and_getme_matches_the_documented_schema`
+  exists and will run for real the moment `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are
+  actually set — it calls Telegram's read-only `getMe` endpoint (not `sendMessage`,
+  so running the test suite never spams a real chat) and checks the response against
+  Telegram's documented Bot API schema. **It is currently skipped, not passing** —
+  a skip is not a pass, and this file will not claim otherwise until it has actually
+  run green against a real bot token.
 - **The Streamlit dashboard**: verified to actually start and serve (HTTP 200, zero
   tracebacks in the server log) against both an empty and a populated paper-trading
   account — this is a real runtime check, not just `ast.parse()`. Its business logic
   (`nse_agents/live/dashboard_data.py`) is unit-tested directly and reuses the exact
   same equity/drawdown computation as `cli.py` and `generate_paper_report.py`, so it
   cannot drift into a fourth, independently-wrong version of the KNOWN_ISSUES #10 bug.
-  What is **not** tested is anything about the interactive session itself (widget
-  state, tab-switching, the symbol selector) — Streamlit's own script-rerun model
-  makes that a browser-driven test, not a pytest one.
+  **Update**: the interactive session itself is now covered too —
+  `tests/test_dashboard_render.py` uses Streamlit's own `AppTest` framework
+  (`streamlit.testing.v1`) to run the real script, switch the sidebar DB path and the
+  symbol selectbox, and assert zero exceptions, closing the gap this entry originally
+  flagged as browser-only. Building it surfaced one real, if minor, finding: two
+  `st.dataframe(..., use_container_width=True)` calls were on a deprecated parameter
+  (Streamlit's own runtime warns and recommends `width="stretch"`) — fixed, since a
+  test that actually runs the app catches things `ast.parse()` structurally cannot.
 - **Scheduling was deliberately not built.** "Daily at 9:00 AM / 3:30 PM IST" needs a
   cron or launchd entry (see README.md), not a background daemon silently started by
   this project. Building and installing an actual persistent scheduled job on the
@@ -444,12 +460,25 @@ plainly so a future reader doesn't have to re-derive them:
   with plausible-looking placeholders to look more complete would be fabricating
   academic citation metadata, not compiling a real one; `tests/test_generate_paper.py`
   asserts none of that pattern appears in the output.
-- **This environment has no LaTeX toolchain** (`pdflatex`/`xelatex` not installed),
-  so `results/paper.tex`'s actual compilation has never been verified end-to-end —
-  only structural sanity (balanced braces and environments, every table row's cell
-  count matching its declared column count) is tested. Compiling it for real is a
-  step left to a human with a TeX installation, stated as unverified rather than
-  assumed to work.
+- **Update, 2026-09-11: LaTeX compilation is now genuinely verified, not just
+  structurally sane.** This environment had no LaTeX toolchain when this entry
+  was first written; it now does — [TinyTeX](https://yihui.org/tinytex/), which
+  installs into the user's home directory (`~/Library/TinyTeX`) without `sudo`,
+  plus `tlmgr install ieeetran` for the one class file TinyTeX's minimal base
+  doesn't ship. `pdflatex -interaction=nonstopmode results/paper.tex`, run
+  twice (resolving cross-references), produces a real 2-page PDF with **zero
+  fatal LaTeX errors** — two cosmetic `Overfull \hbox` warnings remain (a
+  paragraph and a table column each slightly exceed the two-column width by a
+  few points), which is normal for a first-pass IEEE two-column layout and does
+  not affect correctness. Text extraction from the compiled PDF was checked
+  against the source tables (`results/agents/summary.csv`) to confirm the
+  numbers rendered are the real ones, not silently corrupted or truncated.
+  `tests/test_generate_paper.py::test_paper_actually_compiles_to_a_real_pdf_with_no_fatal_latex_errors`
+  runs the real `pdflatex` binary end-to-end and is **skipped, not assumed to
+  pass**, on any machine without a LaTeX toolchain at `PATH` or the known
+  TinyTeX location — this project's standing convention (see #11's Telegram
+  entry above) of never claiming "verified" for something only structurally
+  checked.
 
 ## 15. A two-factor model, model cards, and a metrics exporter — one real finding, one near-self-contradiction caught before it shipped
 

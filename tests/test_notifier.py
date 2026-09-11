@@ -1,7 +1,10 @@
 """Tests for the notification dispatch: content builders (pure) and send logic
-(mocked at the urllib boundary -- no real Telegram/Slack/Discord traffic)."""
+(mocked at the urllib boundary -- no real Telegram/Slack/Discord traffic, except
+one schema-verification test at the bottom that is skipped unless real
+credentials are present in the environment)."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +16,7 @@ from nse_agents.live.notifier import (
     DispatchResult,
     TelegramNotifier,
     WebhookNotifier,
+    _load_dotenv,
     build_eod_summary,
     build_premarket_briefing,
     send_with_fallback,
@@ -190,3 +194,81 @@ def test_eod_summary_handles_no_trades_and_no_positions_gracefully():
     msg = build_eod_summary(snap, [], [], "2026-09-10")
     assert "No trades executed" in msg
     assert "No open positions" in msg
+
+
+# ---- .env loading -----------------------------------------------------------
+
+def test_load_dotenv_sets_a_variable_from_a_file(tmp_path, monkeypatch):
+    monkeypatch.delenv("TEST_DOTENV_VAR", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("TEST_DOTENV_VAR=hello\n")
+    try:
+        _load_dotenv(env_file)
+        assert os.environ["TEST_DOTENV_VAR"] == "hello"
+    finally:
+        monkeypatch.delenv("TEST_DOTENV_VAR", raising=False)
+
+
+def test_load_dotenv_never_overwrites_a_real_environment_variable(tmp_path, monkeypatch):
+    monkeypatch.setenv("TEST_DOTENV_VAR", "real-value")
+    env_file = tmp_path / ".env"
+    env_file.write_text("TEST_DOTENV_VAR=from-file\n")
+    _load_dotenv(env_file)
+    assert os.environ["TEST_DOTENV_VAR"] == "real-value"  # real env always wins
+
+
+def test_load_dotenv_skips_comments_and_blank_lines(tmp_path, monkeypatch):
+    monkeypatch.delenv("TEST_DOTENV_A", raising=False)
+    monkeypatch.delenv("TEST_DOTENV_B", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("# a comment\n\nTEST_DOTENV_A=1\n   \nTEST_DOTENV_B=2\n")
+    try:
+        _load_dotenv(env_file)
+        assert os.environ["TEST_DOTENV_A"] == "1"
+        assert os.environ["TEST_DOTENV_B"] == "2"
+    finally:
+        monkeypatch.delenv("TEST_DOTENV_A", raising=False)
+        monkeypatch.delenv("TEST_DOTENV_B", raising=False)
+
+
+def test_load_dotenv_strips_surrounding_quotes(tmp_path, monkeypatch):
+    monkeypatch.delenv("TEST_DOTENV_QUOTED", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text('TEST_DOTENV_QUOTED="quoted value"\n')
+    try:
+        _load_dotenv(env_file)
+        assert os.environ["TEST_DOTENV_QUOTED"] == "quoted value"
+    finally:
+        monkeypatch.delenv("TEST_DOTENV_QUOTED", raising=False)
+
+
+def test_load_dotenv_is_a_silent_noop_when_the_file_does_not_exist(tmp_path):
+    _load_dotenv(tmp_path / "does_not_exist.env")  # must not raise
+
+
+# ---- live schema verification (skipped without real credentials) ------------
+
+@pytest.mark.skipif(
+    not (os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID")),
+    reason="requires real TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the environment "
+           "(or a .env file) -- not present in this environment, so this notifier "
+           "remains unverified against a live endpoint (see KNOWN_ISSUES.md #11)",
+)
+def test_telegram_bot_token_is_real_and_getme_matches_the_documented_schema():
+    """Calls Telegram's ``getMe`` endpoint -- not ``sendMessage`` -- specifically
+    so this test can run in CI/automated test runs without posting a real
+    message to a real chat every time the suite runs. ``getMe`` is read-only
+    and still proves the bot token is genuinely valid and that the response
+    shape matches Telegram's documented Bot API (``ok``, ``result.id``,
+    ``result.is_bot``, ``result.username``)."""
+    import urllib.request
+
+    token = os.environ["TELEGRAM_BOT_TOKEN"]
+    with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getMe", timeout=15) as resp:
+        body = json.loads(resp.read())
+
+    assert body["ok"] is True
+    result = body["result"]
+    assert isinstance(result["id"], int)
+    assert result["is_bot"] is True
+    assert isinstance(result["username"], str) and result["username"]

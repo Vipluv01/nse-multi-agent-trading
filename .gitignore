@@ -21,3 +21,13 @@ results/technical/oos_*.csv
 # Live-pipeline output: date-specific and stale the next day, unlike the
 # study's static result tables above. Regenerate with run_live_signal.py.
 results/paper_trading/
+
+# Real credentials (TELEGRAM_BOT_TOKEN, NOTIFY_WEBHOOK_URL, etc.) -- loaded by
+# nse_agents/live/notifier.py's minimal .env reader. Never committed.
+.env
+
+# LaTeX build byproducts from compiling results/paper.tex -- regenerable,
+# machine-specific. results/paper.pdf itself IS committed (same convention as
+# the figures: a reproducible output worth having in the repo).
+results/paper.aux
+results/paper.log

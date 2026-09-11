@@ -24,6 +24,7 @@ import streamlit as st
 
 from nse_agents.config import RESULTS, SETTINGS
 from nse_agents.live.dashboard_data import (
+    backtest_ablation_table,
     compute_overview_stats,
     load_account_state,
     macro_regime_indicator,
@@ -86,8 +87,8 @@ def main() -> None:
     symbols = SETTINGS.universe
     prices = _latest_prices(symbols)
 
-    tab_overview, tab_positions, tab_macro = st.tabs(
-        ["Overview", "Positions & Trades", "Sentiment & Macro"]
+    tab_overview, tab_positions, tab_macro, tab_ablation = st.tabs(
+        ["Overview", "Positions & Trades", "Sentiment & Macro", "Backtest Ablation"]
     )
 
     with tab_overview:
@@ -118,14 +119,14 @@ def main() -> None:
         st.subheader("Open positions")
         pos_table = positions_table(store, prices)
         if len(pos_table):
-            st.dataframe(pos_table, use_container_width=True)
+            st.dataframe(pos_table, width="stretch")
         else:
             st.info("No open positions.")
 
         st.subheader("Trade log")
         trade_log = trades_table(store)
         if len(trade_log):
-            st.dataframe(trade_log, use_container_width=True)
+            st.dataframe(trade_log, width="stretch")
         else:
             st.info("No trades recorded.")
 
@@ -150,6 +151,25 @@ def main() -> None:
             st.info(
                 "No sentiment data found at results/sentiment/daily_local.csv — run "
                 "scripts/score_sentiment.py and scripts/aggregate_sentiment.py first."
+            )
+
+    with tab_ablation:
+        st.subheader("Main walk-forward study: strategy ablation")
+        st.caption(
+            "This is the study's own already-published result (README.md) — not "
+            "computed from the paper-trading account above, and not a new evaluation. "
+            "Shown here for one unified view."
+        )
+        ablation = backtest_ablation_table(RESULTS)
+        if len(ablation):
+            st.dataframe(ablation, width="stretch")
+            forest_path = RESULTS / "figures" / "sharpe_forest.png"
+            if forest_path.exists():
+                st.image(str(forest_path), caption="Net Sharpe ratio, 95% bootstrap CI")
+        else:
+            st.info(
+                "No cached ablation summary found at results/agents/summary.csv — run "
+                "scripts/run_agents.py first."
             )
 
 

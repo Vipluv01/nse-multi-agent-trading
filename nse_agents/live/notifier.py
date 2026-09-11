@@ -26,8 +26,45 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
+
+from ..config import ROOT
+
+
+def _load_dotenv(path: Path | str = ROOT / ".env") -> None:
+    """Minimal ``KEY=VALUE`` .env loader -- not ``python-dotenv``: this
+    module already prefers ``urllib`` over a ``requests`` dependency for the
+    same reason (see the module docstring), and a handful of lines of
+    parsing isn't worth a new dependency for. Comments (``#``) and blank
+    lines are skipped; surrounding quotes on a value are stripped. A
+    variable already set in the real environment is never overwritten --
+    the real environment always wins, matching every other tool's
+    convention (a deployment's real env should never be silently shadowed
+    by a stray local .env file).
+
+    Called once at import time so ``TELEGRAM_BOT_TOKEN``/``TELEGRAM_CHAT_ID``/
+    ``NOTIFY_WEBHOOK_URL`` are available to every caller of this module --
+    ``TelegramNotifier``, ``WebhookNotifier``, ``cli.py``'s ``healthcheck`` --
+    not just a script that happens to load .env itself. A no-op if the file
+    doesn't exist, which is the common case (this file is gitignored and
+    never committed -- see .gitignore).
+    """
+    path = Path(path)
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv()
 
 
 @dataclass(frozen=True)
