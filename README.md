@@ -1,5 +1,7 @@
 # A Multi-Agent LLM Framework for Explainable Algorithmic Trading on NSE-Listed Equities
 
+[![CI](https://github.com/Vipluv01/nse-multi-agent-trading/actions/workflows/ci.yml/badge.svg)](https://github.com/Vipluv01/nse-multi-agent-trading/actions/workflows/ci.yml)
+
 An attention-augmented deep learning forecaster, an LLM news-sentiment analyst, and a
 structured bull/bear debate, combined into one auditable trading decision — and then
 evaluated honestly enough to say that **none of it beats buying and holding.**
@@ -578,6 +580,10 @@ python -m nse_agents.cli db-migrate
 .venv/bin/python scripts/factor_regression_report.py
 .venv/bin/python scripts/generate_model_cards.py
 python -m nse_agents.cli export-metrics --strategy Full+Debate --format json
+
+# 15. Compare any two strategies side by side, and build a release distribution.
+python -m nse_agents.cli compare-models --model1 Full+Debate --model2 Tech+Regime
+.venv/bin/python scripts/build_distribution.py
 ```
 
 To run the LLM arms on a materially more capable model instead:

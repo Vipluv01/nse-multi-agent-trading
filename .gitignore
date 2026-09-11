@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 logs/
+dist/
 
 # Caches: regenerable, and large. Prices and headlines re-fetch from the
 # network; LLM responses re-score from the local model.

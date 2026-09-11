@@ -527,3 +527,47 @@ and one documentation near-miss came out of building them:
   string-stringified into `"0.523"` instead of the real JSON number `0.523`.
   `_json_default` in `cli.py` converts each numpy scalar type explicitly rather
   than falling back to `str()` for anything that is actually a number.
+
+## 16. CI, a model-comparison command, and a distribution build check — what "wheel includes paper artifacts" actually means
+
+This round added a GitHub Actions CI workflow (`.github/workflows/ci.yml`), a
+`compare-models` CLI subcommand, and `scripts/build_distribution.py`. One real bug
+caught, and one instruction corrected rather than followed literally:
+
+- **A real alignment bug in `compare-models`**, caught by its own build: sizing the
+  output table's column width from the two strategy names alone left the
+  `Holm p vs Buy&Hold` row's `"n/a (is Buy&Hold)"` label overflowing past every
+  numeric row above it — a real misalignment, not cosmetic nitpicking, since a
+  side-by-side comparison table that doesn't actually align side-by-side has failed
+  at its one job. Fixed by sizing every column from the single widest cell across
+  *all* rows, not just the header. Regression test:
+  `tests/test_compare_models.py::test_columns_stay_aligned_even_with_the_longest_cell`.
+- **"Wheels include paper artifacts" does not mean what a literal reading suggests,
+  and `build_distribution.py` says so rather than forcing it to be true.** A Python
+  wheel is the *installable* artifact; bundling a compiled PDF, result CSVs, or a
+  regenerable price/headline cache into one is the actual anti-pattern, not the
+  gap — `pip install nse-agents` should not download a stale data cache. What
+  `results/paper.tex`/`results/paper.pdf` and the result tables/figures genuinely
+  belong in is the **sdist** (the source archive a release is built *from*), which
+  `scripts/build_distribution.py` verifies explicitly, alongside verifying the wheel
+  contains every real `nse_agents/` source module and *only* that (no
+  `data_cache/`/`llm_cache/` leakage into either distribution format). Real check,
+  not asserted: a genuine `uv build` is run and both archives are opened and
+  inspected, with synthetic-archive tests confirming each check actually fires on a
+  deliberately broken fixture, not just passes on an already-correct one.
+- **`results/CHANGELOG.md` is generated from real `git log` output**, not
+  hand-summarized from memory — every entry is an actual commit subject and body
+  from this repository's own history, with only the `Co-Authored-By:` attribution
+  trailer stripped. `tests/test_build_distribution.py` asserts every real commit
+  subject appears in the rendered output, so the changelog cannot silently drift
+  from what actually happened.
+- **The CI workflow has been structurally validated and its constituent steps
+  verified to work locally (dependency install, `pytest`, `generate_paper.py`,
+  `pdflatex`), but has not yet been run on a real GitHub Actions runner** — that
+  happens the moment this is pushed, not before. Split into two jobs (`test` and
+  `paper-pdf`) deliberately: the LaTeX job needs a full multi-hundred-MB TeX Live
+  image purely to verify `results/paper.tex` still compiles, and shouldn't gate the
+  much more load-bearing test-suite signal on a slower, heavier job. `pip install
+  -e ".[dev,dashboard]"` in the `test` job (not just `[dev]`, which the original
+  instruction named) so `tests/test_dashboard_render.py`'s real Streamlit `AppTest`
+  coverage actually executes in CI instead of skipping via `importorskip`.
