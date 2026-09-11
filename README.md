@@ -18,6 +18,7 @@ Deflated Sharpe Ratio that charges the result for every configuration searched.
 - [Does the null hold across market regimes?](#does-the-null-hold-across-market-regimes)
 - [Synthetic stress tests](#synthetic-stress-tests-does-the-regime-overlay-de-risk-before-a-real-crash-happens)
 - [Risk attribution and extended benchmarks](#risk-attribution-and-extended-benchmarks)
+- [Factor decomposition](#factor-decomposition-is-any-of-this-beta-or-momentum-in-disguise)
 - [Hyperparameter sensitivity](#hyperparameter-sensitivity-is-the-null-fragile-to-any-single-choice)
 - [How to reproduce](#how-to-reproduce)
 - [Live pipeline: the same agents, running on real data today](#live-pipeline-the-same-agents-running-on-real-data-today)
@@ -212,6 +213,15 @@ hyperparameter-sensitivity tables into an IEEE-conference-shaped LaTeX writeup
 than inventing DOIs or page numbers this project has never recorded; **its actual
 compilation is unverified**, since this environment has no LaTeX toolchain (see
 [`KNOWN_ISSUES.md` #14](KNOWN_ISSUES.md#14-a-circuit-breaker-schema-migrations-and-a-latex-paper-generator--none-required-a-real-bug-fix-but-two-design-decisions-are-worth-recording)).
+`scripts/generate_model_cards.py` writes [`results/MODEL_CARDS.md`](results/MODEL_CARDS.md),
+one Mitchell et al. (2019)-style model card per core agent component
+(`TechnicalAgent`, `SentimentAgent`, `RegimeAgent`, the debate engine) — every
+number in it is pulled from an already-cached result file, never re-measured for
+the document. `python -m nse_agents.cli export-metrics --strategy Full+Debate
+--format json` exports one strategy's gross/net performance, per-symbol
+decision log, equity curve and factor-regression metrics as structured JSON or
+CSV, for plotting this study's numbers in a different tool rather than reading
+them off a Markdown table.
 
 ---
 
@@ -342,6 +352,44 @@ NSE stocks — it should be close to 1.0, since they share most constituents. Th
 was a timing mismatch with this codebase's open-to-open return convention
 (`forward_return`); rebuilding the benchmark that way fixed it (beta 1.02, correlation
 0.95). Full account in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md#12-risk-attribution-hyperparameter-sensitivity-and-db-maintenance--one-benchmark-construction-bug-caught-before-it-produced-a-wrong-number).
+
+---
+
+## Factor decomposition: is any of this beta, or momentum, in disguise?
+
+A **two-factor** regression (`nse_agents/backtest/factor_model.py`,
+`scripts/factor_regression_report.py`) — market excess return and a momentum
+(Winners-Minus-Losers) factor built from this study's own universe — asks
+whether a strategy's return survives controlling for the two exposures that can
+be built causally from price history alone. **This is not the four-factor
+Fama-French model the name usually implies**: SMB and HML need a periodic
+cross-sectional sort on *point-in-time* market capitalisation and book/earnings
+yield, data this project has never fetched and will not fake by substituting a
+current snapshot into a historical sort — the identical reasoning the
+[Architecture](#architecture) section already gives for why there is a
+`RegimeAgent` and not a fundamental agent, applied a second time.
+
+| Strategy | Alpha (annualised) | t-stat | β (market) | β (momentum) | R² |
+|---|---|---|---|---|---|
+| Buy&Hold | +10.9% | 5.57 | 1.01 | −0.05 | 0.93 |
+| RSI(14) | +9.1% | 2.59 | 0.77 | −0.12 | 0.71 |
+| Tech+Regime | +6.2% | 1.80 | 0.57 | +0.08 | 0.56 |
+| Tech+Sent+Regime | +3.6% | 1.11 | 0.63 | +0.08 | 0.63 |
+| Full+Debate | +3.0% | 0.92 | 0.65 | +0.07 | 0.64 |
+| Tech+Sentiment | −16.2% | −6.26 | 0.36 | −0.00 | 0.41 |
+| MeanReversion | −21.2% | −6.96 | 0.80 | −0.03 | 0.71 |
+
+**Only 4 of 10 configurations show a statistically significant (p<0.05) alpha —
+and `Buy&Hold` is one of them.** Read that carefully before drawing a
+conclusion: it is **not evidence of stock-picking skill**. It mostly reflects
+that this study's 10-name equal-weight universe outperformed the cap-weighted
+Nifty 50 index directly over this window — a well-documented
+equal-weight-vs-cap-weight effect, not anything a trading decision did.
+`Full+Debate`'s own alpha (+3.0%, t=0.92, not significant) is the number that
+actually answers this section's question: the multi-agent system adds no
+return beyond market beta and this universe's own momentum tilt that a
+two-factor model can't already explain. Full table:
+[`results/improvements/factor_regression.csv`](results/improvements/factor_regression.csv).
 
 ---
 
@@ -522,6 +570,11 @@ python -m nse_agents.cli audit-data
 # 13. Schema migrations and a LaTeX paper writeup.
 python -m nse_agents.cli db-migrate
 .venv/bin/python scripts/generate_paper.py
+
+# 14. Factor decomposition, model cards, and a structured metrics export.
+.venv/bin/python scripts/factor_regression_report.py
+.venv/bin/python scripts/generate_model_cards.py
+python -m nse_agents.cli export-metrics --strategy Full+Debate --format json
 ```
 
 To run the LLM arms on a materially more capable model instead:

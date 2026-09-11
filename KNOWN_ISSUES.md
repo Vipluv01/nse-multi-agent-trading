@@ -450,3 +450,51 @@ plainly so a future reader doesn't have to re-derive them:
   count matching its declared column count) is tested. Compiling it for real is a
   step left to a human with a TeX installation, stated as unverified rather than
   assumed to work.
+
+## 15. A two-factor model, model cards, and a metrics exporter — one real finding, one near-self-contradiction caught before it shipped
+
+This round added a factor regression (`nse_agents/backtest/factor_model.py`,
+`scripts/factor_regression_report.py`), per-component model cards
+(`scripts/generate_model_cards.py` → `results/MODEL_CARDS.md`), and a structured
+metrics exporter (`python -m nse_agents.cli export-metrics`). One genuine finding
+and one documentation near-miss came out of building them:
+
+- **This is a two-factor model (market, momentum), not the four-factor Fama-French
+  model the name usually implies, and that is deliberate.** SMB and HML need a
+  periodic cross-sectional sort on *point-in-time* market capitalisation and
+  book/earnings-yield history — data this project has never fetched and will not
+  fake by substituting a current snapshot into a historical sort. This is the
+  exact same argument `nse_agents/agents/regime.py`'s own docstring already makes
+  for why there is a `RegimeAgent` and not a fundamental agent — applied a second
+  time to a second place a shortcut would have been tempting.
+  `UNAVAILABLE_FACTORS` documents the omission in the module itself rather than
+  leaving a reader to wonder whether it was an oversight.
+- **A real, interesting finding**: regressing every strategy in the ablation
+  against the two-factor model, only 4 of 10 configurations show a
+  statistically significant (p<0.05) alpha — and `Buy&Hold` is one of them
+  (annualised alpha +10.9%, t=5.57). This is **not evidence of stock-picking
+  skill**: it mostly reflects that this study's 10-name equal-weight universe
+  outperformed the cap-weighted Nifty 50 index directly over this window (a
+  well-documented equal-weight-vs-cap-weight effect), not anything the trading
+  system did. `Full+Debate`'s own alpha (+3.0%, p=0.36) is *not* significant —
+  the multi-agent system adds no detectable return beyond market beta and this
+  universe's own momentum tilt. Full table:
+  `results/improvements/factor_regression.csv`.
+- **A near-self-contradiction caught before the model cards shipped**: the first
+  draft of the Debate Engine's card reported the flagship configuration's real
+  escalation rate (97.4%, the *original* "raw" gate) directly next to text
+  describing the fix that reduces escalation to 2.2%-15.1% — worded in a way
+  that read as if the fix had been adopted, when in fact `results/agents/decisions_Full+Debate.csv`
+  (and every number derived from it, everywhere in this study) was produced with
+  the raw gate on purpose, exactly the same frozen-defaults discipline
+  `RiskLimits.cost_aware` and `RegimeAgent(use_macro=True)` already follow (see
+  `KNOWN_ISSUES.md` #4). Caught by a test asserting the card states the gate was
+  *deliberately never replaced*, not just that both numbers are technically true
+  in isolation.
+- **The metrics exporter's JSON must never let a numpy scalar leak in as a
+  stringified value.** `json.dumps`'s stdlib encoder does not natively serialise
+  `numpy.float64`/`int64`/`bool_` — without a custom `default` callback these
+  either raise `TypeError` or (worse, if naively caught) get silently
+  string-stringified into `"0.523"` instead of the real JSON number `0.523`.
+  `_json_default` in `cli.py` converts each numpy scalar type explicitly rather
+  than falling back to `str()` for anything that is actually a number.
