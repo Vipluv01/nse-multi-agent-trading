@@ -9,6 +9,7 @@ handler in ``_SUBCOMMANDS`` below.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +18,10 @@ import pandas as pd
 from .backtest.baselines import build_baseline_signals
 from .backtest.engine import backtest_signals
 from .backtest.metrics import compute_performance
+from .config import RESULTS
 from .live.state_store import DEFAULT_DB_PATH, PaperTradingStore
+
+DEFAULT_EXPORT_PATH = RESULTS / "export.json"
 
 
 def _latest_price(symbol: str, as_of: pd.Timestamp | None = None) -> float:
@@ -217,6 +221,120 @@ def cmd_db_migrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _json_default(obj):
+    """Handles the two object types that leak out of pandas/numpy round-trips
+    and are not natively JSON-serialisable: numpy scalar types (cast to the
+    equivalent Python type, so a number stays a JSON number, not a string) and
+    pandas Timestamps (ISO-formatted). Anything else falls back to ``str()``
+    rather than raising, so an export never crashes on one unexpected field --
+    it degrades to a readable string instead.
+    """
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    return str(obj)
+
+
+def _load_strategy_for_export(name: str):
+    """Every strategy this study reports carries either a cached per-decision
+    log (the multi-agent ablation) or a cached signal frame (the classical
+    baselines) -- this mirrors the identical loading pattern already used by
+    scripts/risk_attribution_report.py and scripts/factor_regression_report.py,
+    kept local rather than imported from scripts/ since nse_agents/ is the
+    package those scripts themselves depend on, not the reverse."""
+    from .backtest.engine import backtest_signals, run_backtest
+
+    decisions_path = RESULTS / "agents" / f"decisions_{name}.csv"
+    if decisions_path.exists():
+        decisions = pd.read_csv(decisions_path, parse_dates=["date"])
+        result = run_backtest(decisions, name)
+        log_columns = [c for c in ("date", "symbol", "action", "score", "size", "debated") if c in decisions]
+        per_symbol_log = decisions[log_columns]
+        log_kind = "per_symbol_decision_log"
+        return result, per_symbol_log, log_kind
+
+    baselines = build_baseline_signals()
+    if name in baselines:
+        signals = baselines[name]
+        result = backtest_signals(signals, name, threshold=0.5)
+        log_columns = [c for c in ("date", "symbol", "prob_up", "fwd_ret") if c in signals]
+        per_symbol_log = signals[log_columns]
+        log_kind = "per_symbol_signal_log"  # baselines have no agent-style Decision
+        return result, per_symbol_log, log_kind
+
+    available = sorted({p.stem.replace("decisions_", "") for p in (RESULTS / "agents").glob("decisions_*.csv")}
+                        | set(baselines))
+    raise KeyError(f"unknown strategy {name!r}; available: {available}")
+
+
+def cmd_export_metrics(args: argparse.Namespace) -> int:
+    from .backtest.factor_model import build_factors, regress_factors
+    from .backtest.metrics import drawdown_series
+
+    try:
+        result, per_symbol_log, log_kind = _load_strategy_for_export(args.strategy)
+    except KeyError as exc:
+        print(exc)
+        return 1
+
+    equity = np.cumprod(1.0 + result.returns)
+    drawdown = drawdown_series(result.returns)
+    equity_curve = pd.DataFrame({"date": result.dates, "equity": equity, "drawdown": drawdown})
+
+    try:
+        factors = build_factors()
+        factor_result = regress_factors(result.returns, result.dates, factors).to_dict()
+    except ValueError as exc:
+        # Too few overlapping days against the factor window -- a real,
+        # reportable outcome for a short-lived strategy, not a crash.
+        factor_result = {"error": str(exc)}
+
+    performance = {
+        "gross": result.performance_gross.to_dict(),
+        "net": result.performance.to_dict(),
+    }
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.format == "json":
+        payload = {
+            "strategy": args.strategy,
+            "generated_at": pd.Timestamp.now().isoformat(),
+            "performance": performance,
+            "factor_regression": factor_result,
+            "equity_curve": equity_curve.to_dict(orient="records"),
+            log_kind: per_symbol_log.to_dict(orient="records"),
+        }
+        out_path.write_text(json.dumps(payload, indent=2, default=_json_default))
+        print(f"wrote {out_path} ({out_path.stat().st_size:,} bytes)")
+    else:  # csv -- one table per concern, since nested factor betas and a
+           # per-symbol log do not share row shape and forcing them into one
+           # table would mean fabricating a join key none of them actually share.
+        stem = out_path.with_suffix("")
+        perf_row = {"strategy": args.strategy}
+        for scope, d in performance.items():
+            perf_row.update({f"{scope}_{k}": v for k, v in d.items()})
+        pd.DataFrame([perf_row]).to_csv(f"{stem}_performance.csv", index=False)
+        equity_curve.to_csv(f"{stem}_equity_curve.csv", index=False)
+        per_symbol_log.to_csv(f"{stem}_{log_kind}.csv", index=False)
+        factor_row = {"strategy": args.strategy}
+        for k, v in factor_result.items():
+            if isinstance(v, dict):
+                factor_row.update({f"{k}_{kk}": vv for kk, vv in v.items()})
+            elif not isinstance(v, (list, tuple)):
+                factor_row[k] = v
+        pd.DataFrame([factor_row]).to_csv(f"{stem}_factor_regression.csv", index=False)
+        print(f"wrote {stem}_performance.csv, {stem}_equity_curve.csv, "
+              f"{stem}_{log_kind}.csv, {stem}_factor_regression.csv")
+    return 0
+
+
 _SUBCOMMANDS = {
     "paper-status": (
         "Show current paper-trading account state, positions and performance.",
@@ -265,6 +383,21 @@ _SUBCOMMANDS = {
         "PRAGMA user_version), without touching existing trade logs or account state.",
         cmd_db_migrate,
         lambda p: p.add_argument("--db", default=str(DEFAULT_DB_PATH)),
+    ),
+    "export-metrics": (
+        "Export one strategy's backtest statistics (gross and net), per-symbol "
+        "decision/signal log, equity curve, and factor-regression metrics as "
+        "structured JSON (one file) or CSV (four sibling tables) for downstream "
+        "visualisation. Trains and computes nothing new -- reads only already-cached "
+        "results.",
+        cmd_export_metrics,
+        lambda p: (
+            p.add_argument("--strategy", default="Full+Debate",
+                            help="Any strategy from the main ablation or classical baselines "
+                                 "(e.g. Full+Debate, Tech+Regime, Buy&Hold, MACD)."),
+            p.add_argument("--format", choices=["json", "csv"], default="json"),
+            p.add_argument("--output", default=str(DEFAULT_EXPORT_PATH)),
+        ),
     ),
 }
 
