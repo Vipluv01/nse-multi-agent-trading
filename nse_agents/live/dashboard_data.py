@@ -110,6 +110,20 @@ def sentiment_distribution(sentiment_daily: pd.DataFrame) -> pd.DataFrame:
     return bucketed.value_counts().reindex(labels).rename_axis("bucket").reset_index(name="count")
 
 
+def backtest_ablation_table(results_dir: Path | str) -> pd.DataFrame:
+    """The main walk-forward study's own already-published ablation summary
+    (``results/agents/summary.csv``) -- read directly, never recomputed, so
+    the dashboard cannot silently show a different number than README.md for
+    the one figure that actually determines whether this system has ever
+    beaten Buy&Hold. This has no relationship to the paper-trading account
+    shown in the other tabs -- it is the historical walk-forward evaluation,
+    not a live result."""
+    path = Path(results_dir) / "agents" / "summary.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+
 def macro_regime_indicator(regime_table: pd.DataFrame, symbol: str) -> dict:
     """Latest VIX/Nifty-momentum reading for one symbol's regime row --
     reused from the same ``build_regime_table`` output the live pipeline

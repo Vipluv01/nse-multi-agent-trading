@@ -1,14 +1,16 @@
 """Tests for scripts/generate_paper.py.
 
-**No LaTeX toolchain is available in this environment** (no pdflatex/xelatex),
-so real compilation is never checked here -- only structural sanity (balanced
-braces and environments, table row/column consistency, no un-escaped special
-characters leaking through from data). A human with a TeX installation is
-still the one who verifies this actually typesets, per the script's own
-docstring.
+Structural sanity (balanced braces and environments, table row/column
+consistency, no un-escaped special characters leaking through from data) is
+always checked, with no LaTeX toolchain needed. **Real PDF compilation is
+checked too, but only when a `pdflatex` is actually found** (on `PATH`, or at
+this machine's TinyTeX install location) -- skipped, not assumed to pass,
+everywhere else. See KNOWN_ISSUES.md #14 for how and when this was first
+verified for real (TinyTeX + the `ieeetran` package, no `sudo` required).
 """
 
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -134,3 +136,68 @@ def test_generate_paper_runs_end_to_end_and_writes_a_balanced_tex_file():
             if line.endswith(r"\\") and line not in (r"\toprule", r"\midrule", r"\bottomrule"):
                 cells = line[: -len(r"\\")].split(" & ")
                 assert len(cells) == expected_cols, f"row {line!r} has {len(cells)} cells, expected {expected_cols}"
+
+
+def _find_pdflatex() -> str | None:
+    """`pdflatex` on `PATH`, or -- for this machine specifically -- at the
+    TinyTeX location the paper's compilation was first verified against
+    (installed 2026-09-11; see KNOWN_ISSUES.md #14). Neither existing is a
+    real, common case (most machines running this suite have no LaTeX
+    toolchain at all), which is exactly why this is a lookup with a `None`
+    fallback, not an assumed-present dependency."""
+    found = shutil.which("pdflatex")
+    if found:
+        return found
+    tinytex = Path.home() / "Library" / "TinyTeX" / "bin" / "universal-darwin" / "pdflatex"
+    return str(tinytex) if tinytex.exists() else None
+
+
+@pytest.mark.skipif(
+    _find_pdflatex() is None,
+    reason="no pdflatex found on PATH or at the known TinyTeX location -- LaTeX "
+           "compilation is genuinely unverified on this machine (see KNOWN_ISSUES.md #14)",
+)
+@pytest.mark.skipif(
+    not (RESULTS / "technical" / "architecture_summary.csv").exists(),
+    reason="requires the main study's cached result tables to be present",
+)
+def test_paper_actually_compiles_to_a_real_pdf_with_no_fatal_latex_errors(tmp_path):
+    """The real thing this test suite could only gesture at before: run the
+    generator, then run the real `pdflatex` binary against its output (twice,
+    resolving cross-references, exactly as a human would), and check the
+    result is a genuine, non-empty PDF -- not just balanced braces."""
+    gen = subprocess.run(
+        [PY, str(ROOT / "scripts" / "generate_paper.py")],
+        capture_output=True, text=True, timeout=60, cwd=ROOT,
+    )
+    assert gen.returncode == 0, gen.stderr
+
+    pdflatex = _find_pdflatex()
+    out_dir = tmp_path / "latex_out"
+    out_dir.mkdir()
+    last_result = None
+    for _ in range(2):  # twice: pdflatex itself warns references need a second pass
+        last_result = subprocess.run(
+            [pdflatex, "-interaction=nonstopmode", "-halt-on-error",
+             f"-output-directory={out_dir}", str(RESULTS / "paper.tex")],
+            capture_output=True, text=True, timeout=120, cwd=ROOT,
+        )
+
+    pdf_path = out_dir / "paper.pdf"
+    assert last_result.returncode == 0, (
+        f"pdflatex failed (exit {last_result.returncode}):\n{last_result.stdout[-3000:]}"
+    )
+    assert pdf_path.exists(), "pdflatex reported success but wrote no PDF"
+    assert pdf_path.stat().st_size > 10_000, "PDF exists but is suspiciously small"
+    assert pdf_path.read_bytes()[:5] == b"%PDF-", "output is not a valid PDF"
+
+    log_text = (out_dir / "paper.log").read_text(errors="replace")
+    fatal_lines = [
+        line for line in log_text.splitlines()
+        if line.startswith("!") and "Emergency stop" not in line
+    ]
+    # "!" at line-start is pdfTeX's own fatal-error marker; a successful,
+    # exit-0 run should have none, but check explicitly rather than trusting
+    # the exit code alone -- pdflatex has, in the past, exited 0 on some
+    # recoverable-but-real error classes when not run with -halt-on-error.
+    assert not fatal_lines, f"pdflatex log contains fatal error markers: {fatal_lines}"
