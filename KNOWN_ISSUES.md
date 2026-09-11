@@ -467,10 +467,7 @@ plainly so a future reader doesn't have to re-derive them:
   plus `tlmgr install ieeetran` for the one class file TinyTeX's minimal base
   doesn't ship. `pdflatex -interaction=nonstopmode results/paper.tex`, run
   twice (resolving cross-references), produces a real 2-page PDF with **zero
-  fatal LaTeX errors** — two cosmetic `Overfull \hbox` warnings remain (a
-  paragraph and a table column each slightly exceed the two-column width by a
-  few points), which is normal for a first-pass IEEE two-column layout and does
-  not affect correctness. Text extraction from the compiled PDF was checked
+  fatal LaTeX errors**. Text extraction from the compiled PDF was checked
   against the source tables (`results/agents/summary.csv`) to confirm the
   numbers rendered are the real ones, not silently corrupted or truncated.
   `tests/test_generate_paper.py::test_paper_actually_compiles_to_a_real_pdf_with_no_fatal_latex_errors`
@@ -479,6 +476,25 @@ plainly so a future reader doesn't have to re-derive them:
   TinyTeX location — this project's standing convention (see #11's Telegram
   entry above) of never claiming "verified" for something only structurally
   checked.
+- **Update, same day: the two `Overfull \hbox` warnings above were real and
+  are now fixed, not just tolerated.** Both were tables (the architecture
+  ablation and the multi-agent ablation, at 6 and 5 columns respectively)
+  genuinely too wide for the IEEE two-column width — a 95% CI column like
+  `[-0.58, +0.85]` isn't optional content a font-size tweak could reliably
+  trim away, and a fixed point-size reduction wouldn't guarantee a fit for
+  every future re-run of `factor_regression_report.py`/`optimize_hyperparams.py`
+  adding rows. `_booktabs_table` in `scripts/generate_paper.py` now wraps
+  every table in `\resizebox{\columnwidth}{!}{...}` (`\usepackage{graphicx}`),
+  which scales to fit by construction regardless of column count or cell
+  width — confirmed against a real `pdflatex` run: **zero Overfull/Underfull
+  warnings of any kind**, not just the two originally flagged. Also added
+  `\balance` (`\usepackage{balance}`, from the `preprint` package — `tlmgr
+  install preprint` on TinyTeX; `balance` alone is not the correct package
+  name despite matching the command) right before the bibliography, per
+  IEEEtran's own compiler note asking for the last page's two columns to be
+  equalised before a camera-ready submission. Table content was re-verified
+  by PDF text extraction after the resize, to confirm scaling didn't corrupt
+  or truncate any cell.
 
 ## 15. A two-factor model, model cards, and a metrics exporter — one real finding, one near-self-contradiction caught before it shipped
 

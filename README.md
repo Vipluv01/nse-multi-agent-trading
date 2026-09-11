@@ -215,7 +215,10 @@ hyperparameter-sensitivity tables into an IEEE-conference-shaped LaTeX writeup
 than inventing DOIs or page numbers this project has never recorded. **Compilation is
 verified**, not just structurally checked: [`results/paper.pdf`](results/paper.pdf) is
 a real, committed 2-page PDF, compiled with TinyTeX (`pdflatex` + `tlmgr install
-ieeetran`, no `sudo` needed) and checked for zero fatal LaTeX errors — see
+ieeetran preprint`, no `sudo` needed) and checked for zero fatal LaTeX errors **and
+zero Overfull/Underfull `\hbox` warnings** — every table is wrapped in
+`\resizebox{\columnwidth}{!}{...}` specifically so it fits the two-column width
+regardless of row/column count — see
 [`KNOWN_ISSUES.md` #14](KNOWN_ISSUES.md#14-a-circuit-breaker-schema-migrations-and-a-latex-paper-generator--none-required-a-real-bug-fix-but-two-design-decisions-are-worth-recording)
 for exactly what that checked and what it didn't.
 `scripts/generate_model_cards.py` writes [`results/MODEL_CARDS.md`](results/MODEL_CARDS.md),
