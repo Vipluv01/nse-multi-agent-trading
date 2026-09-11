@@ -201,3 +201,11 @@ def test_paper_actually_compiles_to_a_real_pdf_with_no_fatal_latex_errors(tmp_pa
     # the exit code alone -- pdflatex has, in the past, exited 0 on some
     # recoverable-but-real error classes when not run with -halt-on-error.
     assert not fatal_lines, f"pdflatex log contains fatal error markers: {fatal_lines}"
+
+    # Every table is wrapped in \resizebox{\columnwidth}{!}{...} specifically
+    # so it fits the IEEE two-column width regardless of row/column count --
+    # a real Overfull/Underfull \hbox here (there were two, from tables, before
+    # that fix -- see KNOWN_ISSUES.md #14) means that guarantee has silently
+    # broken, not a cosmetic nit to tolerate.
+    box_warnings = [line for line in log_text.splitlines() if "Overfull" in line or "Underfull" in line]
+    assert not box_warnings, f"pdflatex log contains box-fit warnings: {box_warnings}"

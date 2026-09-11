@@ -2,6 +2,12 @@
 \usepackage{booktabs}
 \usepackage{amsmath}
 \usepackage[hyphens]{url}
+\usepackage{graphicx}
+% \balance (from the `balance` package) equalises the two columns on the
+% last page -- IEEEtran's own compiler note asks for this by hand before a
+% camera-ready submission; \balance right before the bibliography is the
+% standard placement, since it is the last full section before references.
+\usepackage{balance}
 
 \title{A Multi-Agent LLM Framework for Explainable Algorithmic Trading on NSE-Listed Equities}
 \author{\IEEEauthorblockN{Author Name}\IEEEauthorblockA{Institution}}
@@ -88,6 +94,7 @@ configurations searched to find it.
 \centering
 \caption{Directional accuracy by architecture, purged walk-forward, 3 seeds, 16 folds.}
 \label{tab:architecture}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lrrrrr}
 \toprule
 Architecture & Accuracy & Std (3 seeds) & AUC & MCC & $p$ vs. chance \\
@@ -98,6 +105,7 @@ PLSTM-TAL & 0.4998 & 0.0048 & 0.5008 & 0.0007 & 0.958 \\
 PLSTM & 0.4996 & 0.0003 & 0.4999 & -0.0018 & 0.904 \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 No architecture's out-of-sample directional accuracy is statistically
@@ -109,6 +117,7 @@ distinguishable from chance (50\%) at conventional significance levels.
 \centering
 \caption{Gross vs. net Sharpe ratio, delivery-segment Indian transaction costs.}
 \label{tab:gross-net}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lrrr}
 \toprule
 Strategy & Sharpe (gross) & Sharpe (net) & Cost drag \\
@@ -125,6 +134,7 @@ MeanReversion & +0.680 & -1.408 & +2.088 \\
 Tech+Sentiment & -0.114 & -2.090 & +1.975 \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 Indian delivery-segment transaction costs (approximately 32 basis points
@@ -137,6 +147,7 @@ Sharpe ratio, in several cases reversing its sign.
 \centering
 \caption{Multi-agent ablation: block-bootstrap confidence intervals and Deflated Sharpe Ratio (Bailey \& L\'opez de Prado), correcting for the multiple configurations searched over the course of this study.}
 \label{tab:multi-agent-dsr}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lrrrr}
 \toprule
 Configuration & Sharpe (net) & 95\% CI & $p(\text{Sharpe}>0)$ & Deflated Sharpe \\
@@ -153,6 +164,7 @@ MeanReversion & -1.408 & [-2.05, -0.77] & 0.000 & 0.0000 \\
 Tech+Sentiment & -2.090 & [-2.77, -1.40] & 0.000 & 0.0000 \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 Every configuration's Deflated Sharpe Ratio is substantially below the
@@ -165,6 +177,7 @@ configurations searched over the course of this study.
 \centering
 \caption{Hyperparameter sensitivity sweep (a ``+''-shaped design; see the pre-registration in this study's repository). No cell's interval excludes zero.}
 \label{tab:hyperparam}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lrr}
 \toprule
 Configuration & Sharpe (net) & 95\% CI \\
@@ -181,6 +194,7 @@ conviction\_floor=0.15 & +0.080 & [-0.65, +0.83] \\
 conviction\_floor=0.20 & +0.151 & [-0.57, +0.90] \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 The null result is not an artefact of any single hand-set forecast horizon,
@@ -204,6 +218,7 @@ was found,'' not as a demonstration that no smaller edge exists. Future work
 should prioritise a materially more capable LLM backend for the sentiment and
 debate arms, a longer evaluation window, and point-in-time fundamental data.
 
+\balance
 \begin{thebibliography}{5}
 
 \bibitem{ref1} PLSTM-TAL: A peephole LSTM with temporal attention for stock trend prediction, \textit{Heliyon}, 2024.

@@ -19,13 +19,16 @@ those in for a real submission is left to a human author with the actual
 papers in hand, not fabricated here to look more complete than the source
 material supports.
 
-**Unverified: this environment has no LaTeX toolchain** (`pdflatex`/`xelatex`
-not installed), so the generated ``.tex`` file's actual compilation has never
-been checked end-to-end -- only structural sanity (balanced braces and
-environments, table row/column consistency) is tested
-(``tests/test_generate_paper.py``). Compiling requires a TeX distribution with
-the ``IEEEtran`` document class (part of any standard TeX Live install) and
-the ``booktabs`` package.
+**Compilation is verified where a LaTeX toolchain is available** -- see
+``KNOWN_ISSUES.md`` #14 for how this was first done (TinyTeX, no ``sudo``
+needed) and confirmed to produce zero fatal errors and zero
+Overfull/Underfull ``\hbox`` warnings. ``tests/test_generate_paper.py`` runs
+the real ``pdflatex`` binary end-to-end and skips cleanly -- never assumed to
+pass -- on a machine with no LaTeX toolchain at all. Compiling requires a TeX
+distribution with the ``IEEEtran`` document class, ``booktabs``, ``graphicx``,
+and the ``balance`` package (on TinyTeX: ``tlmgr install ieeetran preprint`` --
+``preprint``, not ``balance``, is the actual package name for
+``balance.sty``); any standard full TeX Live install already has all four.
 
 Usage:  .venv/bin/python scripts/generate_paper.py
 """
@@ -75,12 +78,25 @@ def _escape(text) -> str:
 def _booktabs_table(
     headers: list[str], rows: list[list[str]], caption: str, label: str, col_align: str | None = None,
 ) -> str:
+    """Every table here is wrapped in ``\\resizebox{\\columnwidth}{!}{...}``,
+    not just given a smaller font or tighter ``\\tabcolsep``: this study's
+    real numbers set the column count and cell width (a 95% CI column like
+    ``[-0.58, +0.85]`` isn't optional content to trim), so the only fix that
+    is guaranteed to fit *every* one of these tables inside the IEEE
+    two-column width -- regardless of how many rows a future re-run of
+    ``factor_regression_report.py``/``optimize_hyperparams.py`` adds -- is
+    one that scales to the column, not one that hopes a fixed point size
+    happens to be small enough. Confirmed against a real ``pdflatex`` run:
+    zero ``Overfull \\hbox`` warnings with this table's own content, where
+    ``\\tabcolsep`` alone left two of five tables still overflowing.
+    """
     align = col_align or ("l" + "r" * (len(headers) - 1))
     lines = [
         r"\begin{table}[htbp]",
         r"\centering",
         f"\\caption{{{caption}}}",
         f"\\label{{{label}}}",
+        r"\resizebox{\columnwidth}{!}{%",
         f"\\begin{{tabular}}{{{align}}}",
         r"\toprule",
         " & ".join(headers) + r" \\",
@@ -88,7 +104,7 @@ def _booktabs_table(
     ]
     for row in rows:
         lines.append(" & ".join(row) + r" \\")
-    lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}"]
+    lines += [r"\bottomrule", r"\end{tabular}", r"}", r"\end{table}"]
     return "\n".join(lines)
 
 
@@ -195,6 +211,12 @@ def build_document(tables: dict[str, pd.DataFrame]) -> str:
 \usepackage{booktabs}
 \usepackage{amsmath}
 \usepackage[hyphens]{url}
+\usepackage{graphicx}
+% \balance (from the `balance` package) equalises the two columns on the
+% last page -- IEEEtran's own compiler note asks for this by hand before a
+% camera-ready submission; \balance right before the bibliography is the
+% standard placement, since it is the last full section before references.
+\usepackage{balance}
 
 \title{A Multi-Agent LLM Framework for Explainable Algorithmic Trading on NSE-Listed Equities}
 \author{\IEEEauthorblockN{Author Name}\IEEEauthorblockA{Institution}}
@@ -309,6 +331,7 @@ was found,'' not as a demonstration that no smaller edge exists. Future work
 should prioritise a materially more capable LLM backend for the sentiment and
 debate arms, a longer evaluation window, and point-in-time fundamental data.
 
+\balance
 \begin{thebibliography}{5}
 """)
     for i, ref in enumerate(REFERENCES, start=1):
@@ -332,9 +355,21 @@ def main() -> int:
     document = build_document(tables)
     OUT_TEX.write_text(document)
     print(f"wrote {OUT_TEX} ({len(document):,} characters)", flush=True)
-    print("NOTE: no LaTeX toolchain in this environment -- compilation has not "
-          "been verified end-to-end. Compile with: pdflatex results/paper.tex "
-          "(requires the IEEEtran class and booktabs package).", flush=True)
+
+    import shutil
+
+    pdflatex = shutil.which("pdflatex") or (
+        str(p) if (p := Path.home() / "Library" / "TinyTeX" / "bin" / "universal-darwin" / "pdflatex").exists()
+        else None
+    )
+    if pdflatex:
+        print(f"pdflatex found at {pdflatex} -- compile with: "
+              f"pdflatex -output-directory=results results/paper.tex", flush=True)
+    else:
+        print("NOTE: no pdflatex found on PATH or at the known TinyTeX location on this "
+              "machine -- compilation has not been verified here. Requires a TeX "
+              "distribution with the IEEEtran, booktabs, graphicx, and balance packages "
+              "(on TinyTeX: tlmgr install ieeetran preprint).", flush=True)
     return 0
 
 
