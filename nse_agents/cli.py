@@ -35,6 +35,9 @@ def _latest_price(symbol: str, as_of: pd.Timestamp | None = None) -> float:
 
 
 def cmd_paper_status(args: argparse.Namespace) -> int:
+    from .data.prices import use_live_price_cache
+
+    use_live_price_cache()
     path = Path(args.db)
     if not path.exists():
         print(f"no paper-trading state at {path} -- run scripts/run_live_signal.py "
@@ -122,6 +125,9 @@ def cmd_paper_status(args: argparse.Namespace) -> int:
 
 
 def cmd_healthcheck(args: argparse.Namespace) -> int:
+    from .data.prices import use_live_price_cache
+
+    use_live_price_cache()
     from .live.healthcheck import run_all_checks
 
     results = run_all_checks(db_path=args.db, ping_llm=args.ping_llm)

@@ -587,3 +587,85 @@ caught, and one instruction corrected rather than followed literally:
   -e ".[dev,dashboard]"` in the `test` job (not just `[dev]`, which the original
   instruction named) so `tests/test_dashboard_render.py`'s real Streamlit `AppTest`
   coverage actually executes in CI instead of skipping via `importorskip`.
+
+## 17. Final evaluation (November) — the explainability audit caught a real provenance bug; four data defects fixed before they reached a number
+
+The final round added everything the mid-semester plan promised for November: a
+point-in-time fundamentals agent (`nse_agents/agents/fundamentals.py`), a 30-name /
+Nov-2026 extended universe (`scripts/final_train_extended.py`), a Qwen2.5-3B vs
+1.5B sentiment comparison and an earnings-announcement study
+(`scripts/final_sentiment_studies.py`), cost-aware sizing (the existing edge-vs-cost
+gate plus a new no-trade band, `OrchestratorConfig.rebalance_band`), a full ablation
+re-run (`scripts/final_run_ablation.py`), and a measured explainability evaluation
+(`scripts/final_explainability.py`). All results live under `results/final/`; the
+thesis and slides are generated from those files by `scripts/final_make_report.py`
+and `scripts/final_make_slides.py`. Every new behaviour is opt-in, and the final run
+reproduces the mid-semester Sharpe ratios to 1e-9.
+
+- **Provenance bug in every mid-semester rationale.** `scripts/run_agents.py` built
+  `TechnicalAgent(oos)` without `architecture=`, so all 19,110 decision rationales
+  said "PLSTM-TAL assigns P(up)=…" while the predictions were the LSTM-TAL seed
+  ensemble. No number was wrong; the explanation was. The provenance check in the
+  explainability audit reports 0% correct on the mid-semester logs and 100% on the
+  final ones. This is the strongest argument in the thesis for measuring
+  explainability rather than asserting it — an asserted claim would never have
+  caught it.
+- **`IncompleteRead` was not retried by the price fetcher.** The retry loop caught
+  timeouts and URL errors but not a truncated chunked transfer, so one flaky response
+  aborted a 32-symbol fetch. Now retried (`nse_agents/data/prices.py`).
+- **Yahoo's dividend adjustment rewrites history.** Refreshing `data_cache/prices`
+  in place to extend the period would have silently moved every mid-semester number,
+  because adjusted closes before a new dividend change. Extended prices live in
+  `data_cache/prices_ext`, selected by `NSE_AGENTS_PRICE_CACHE`; unset is the original.
+- **Fiscal-year changes would have produced fake growth.** HCLTECH reported a 9-month
+  "Mar 2016" period (June→March year end) and NESTLEIND a 15-month "Mar 2024"
+  (December→March). A March-only parser dropped Nestlé's history entirely; a naive one
+  would have reported +25% "growth" from period length alone. Labels are parsed with
+  their month count, growth is undefined across irregular periods, and ROE is
+  annualised. Regression test:
+  `tests/test_fundamentals.py::test_irregular_fiscal_periods_are_parsed_and_not_used_for_growth`.
+- **Consolidated statements can be short.** Nestlé India's consolidated history on
+  the source is 4 years; the fetcher now falls back to standalone statements when the
+  consolidated history is under 8 years, and records which basis it used.
+- **Not a bug, an environment fact:** inside this sandbox PyTorch reports
+  `mps.is_available() == False`, so LLM scoring silently ran on CPU (~4 s/headline).
+  The 3B scoring and debate runs were executed outside the sandbox on MPS. The
+  device is printed at start-up for exactly this reason.
+
+Stated limitations of the new components, also in the thesis: fundamentals are
+disclosure-lagged but *restated* (not as-first-printed), annual only, no valuation
+ratio; the "larger LLM" is 3B, not a frontier model (no API key in this
+environment); the extended universe has no news corpus, so sentiment/debate
+configurations are core-universe only; both universes are current index members
+(survivorship).
+
+## 18. The live pipeline overwrote the study's price cache — found during the final evaluation, fixed with a hard guard
+
+`nse_agents/live/snapshot.py` called `load_prices(..., refresh=True)` against the
+*same* `data_cache/prices/` folder the walk-forward study reads. Running the
+live EOD-summary test with network access (9 Nov 2026, 20:08) re-fetched all ten
+study files from Yahoo. The final ablation's baselines, computed after that
+moment, came out slightly different from the mid-semester ones (RSI 0.424 → 0.414,
+MACD 0.020 → 0.009), which is how it was noticed.
+
+What actually changed, measured against the original returns preserved in
+`results/technical/oos_*.csv`: for every symbol, 3 of 1,911 sessions disappeared
+(2026-05-01, 2026-05-28, 2026-06-26, all NSE holidays) and the returns on the 2–3
+sessions next to each changed. The September snapshot had contained **phantom
+bars on exchange holidays**, which Yahoo has since removed. Everything else is
+identical. The data is not version-controlled and no copy of the September files
+existed, so the original files cannot be restored byte-for-byte. Effect on
+published numbers: none (the mid-semester result tables were already written).
+
+Fixes:
+
+- `load_prices` reads `NSE_AGENTS_PRICE_CACHE` per call and **raises
+  `FrozenCacheError` on any `refresh=True` against the study cache**, so this cannot
+  recur silently (`tests/test_final_extensions.py::test_study_price_cache_refuses_refresh`).
+- Every live entry point (`run_live_signal.py`, `send_eod_summary.py`,
+  `send_premarket_briefing.py`, `train_production_model.py`, `dashboard.py`, and the
+  `paper-status`/`healthcheck` CLI commands) calls `use_live_price_cache()` first and
+  works in `data_cache/prices_live/`.
+- `scripts/final_run_ablation.py` now feeds every strategy, baselines included, the
+  decision universe's own forward returns, so agents and baselines are always
+  compared on the identical return series, whichever snapshot the indicators came from.

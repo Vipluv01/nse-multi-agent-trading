@@ -26,9 +26,9 @@
 | Series | CAGR | Sharpe | MaxDD | Days |
 | --- | --- | --- | --- | --- |
 | Full+Debate | +6.91% | +0.131 | -25.88% | 1911 |
-| Buy&Hold | +16.15% | +0.577 | -38.56% | 1912 |
+| Buy&Hold | +16.18% | +0.578 | -38.56% | 1909 |
 | Nifty50 | +11.62% | +0.377 | -37.77% | 1904 |
-| EqualWeightUniverse | +16.18% | +0.578 | -38.56% | 1912 |
+| EqualWeightUniverse | +16.21% | +0.579 | -38.56% | 1909 |
 | NiftyNext50 | +15.81% | +0.525 | -36.46% | 1646 |
 
 *Nifty Next 50 starts 2020-01-01 (Yahoo's data floor for that ticker) -- its row covers a shorter window than the others and is not directly comparable in absolute terms.*

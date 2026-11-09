@@ -23,6 +23,9 @@ import pandas as pd
 import streamlit as st
 
 from nse_agents.config import RESULTS, SETTINGS
+from nse_agents.data.prices import use_live_price_cache
+
+use_live_price_cache()  # never touch the frozen study cache (KNOWN_ISSUES #18)
 from nse_agents.live.dashboard_data import (
     backtest_ablation_table,
     compute_overview_stats,

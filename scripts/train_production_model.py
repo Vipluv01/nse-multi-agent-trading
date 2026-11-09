@@ -33,6 +33,9 @@ OUT = RESULTS / "production"
 
 
 def main() -> int:
+    from nse_agents.data.prices import use_live_price_cache
+
+    use_live_price_cache()  # never touch the frozen study cache (KNOWN_ISSUES #18)
     torch.manual_seed(SETTINGS.seed)
     np.random.seed(SETTINGS.seed)
 

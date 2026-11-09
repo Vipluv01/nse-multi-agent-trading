@@ -1,0 +1,24 @@
+{
+  "experiment": "core",
+  "n_decisions": 19110,
+  "symbols": [
+    "RELIANCE",
+    "TCS",
+    "HDFCBANK",
+    "INFY",
+    "ICICIBANK",
+    "SBIN",
+    "BHARTIARTL",
+    "ITC",
+    "LT",
+    "AXISBANK"
+  ],
+  "first": "2018-12-07",
+  "last": "2026-08-27",
+  "band": 0.05,
+  "architecture": "LSTM-TAL",
+  "debate_escalation_rate": {
+    "Full+Debate(conviction)": 0.10523286237571952,
+    "All4+Debate(conviction)": 0.28948194662480375
+  }
+}
