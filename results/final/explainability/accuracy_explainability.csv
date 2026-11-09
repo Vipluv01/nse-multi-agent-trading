@@ -1,0 +1,12 @@
+model,class,accuracy,E1 per-decision natural-language rationale,E2 exact additive attribution (score reconstructable),E3 explicit abstention ('no evidence' != 'neutral'),E4 risk overrides stated in the audit trail,E5 adversarial argument (bull vs bear case),explainability_score
+LSTM (black box),black-box,0.5045351473922902,0,0,0,0,0,0
+LSTM-TAL (black box),black-box,0.5024071166928311,0,0,0,0,0,0
+PLSTM-TAL (black box),black-box,0.4998081283795569,0,0,0,0,0,0
+PLSTM (black box),black-box,0.4995639281353567,0,0,0,0,0,0
+GBM (black box),black-box,0.4998430141287284,0,0,0,0,0,0
+Tech+Regime,agents+risk,0.501622187336473,1,1,1,1,0,4
+Tech+Regime+Fund,agents+risk,0.5006279434850863,1,1,1,1,0,4
+Tech+Sent+Regime+Fund,agents+risk,0.5029304029304029,1,1,1,1,0,4
+All4+CostAware+Band,agents+risk,0.5029304029304029,1,1,1,1,0,4
+Full+Debate(conviction),agents+risk+debate,0.502407116692831,1,1,1,1,1,5
+All4+Debate(conviction),agents+risk+debate,0.5054945054945055,1,1,1,1,1,5

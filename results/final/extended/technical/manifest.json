@@ -1,0 +1,44 @@
+[
+  {
+    "name": "PLSTM-TAL_seed0",
+    "architecture": "PLSTM-TAL",
+    "oos_accuracy": 0.49798703514158993,
+    "n_oos": 58620,
+    "elapsed_s": 349.2
+  },
+  {
+    "name": "PLSTM-TAL_seed1",
+    "architecture": "PLSTM-TAL",
+    "oos_accuracy": 0.498805868304333,
+    "n_oos": 58620,
+    "elapsed_s": 437.7
+  },
+  {
+    "name": "PLSTM-TAL_seed2",
+    "architecture": "PLSTM-TAL",
+    "oos_accuracy": 0.4991641078130331,
+    "n_oos": 58620,
+    "elapsed_s": 356.1
+  },
+  {
+    "name": "LSTM-TAL_seed0",
+    "architecture": "LSTM-TAL",
+    "oos_accuracy": 0.4976970317297851,
+    "n_oos": 58620,
+    "elapsed_s": 319.5
+  },
+  {
+    "name": "LSTM-TAL_seed1",
+    "architecture": "LSTM-TAL",
+    "oos_accuracy": 0.5008188331627431,
+    "n_oos": 58620,
+    "elapsed_s": 402.7
+  },
+  {
+    "name": "LSTM-TAL_seed2",
+    "architecture": "LSTM-TAL",
+    "oos_accuracy": 0.5010917775503241,
+    "n_oos": 58620,
+    "elapsed_s": 354.5
+  }
+]

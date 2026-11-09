@@ -72,7 +72,11 @@ def main() -> int:
     print(f"decision universe: {len(pairs):,} (date, symbol) pairs, "
           f"{pairs['date'].min().date()}..{pairs['date'].max().date()}", flush=True)
 
-    technical = TechnicalAgent(oos)
+    # Name the model that actually produced `oos` in every rationale. Before this
+    # was passed, all 19,110 audit-trail entries credited PLSTM-TAL while the
+    # predictions came from LSTM-TAL (caught by the final explainability audit,
+    # KNOWN_ISSUES.md #17). Numbers were unaffected; the rationale text was wrong.
+    technical = TechnicalAgent(oos, architecture=args.architecture)
 
     regime_table = build_regime_table()
     regime = RegimeAgent(regime_table)

@@ -32,3 +32,17 @@ results/paper_trading/
 # the figures: a reproducible output worth having in the repo).
 results/paper.aux
 results/paper.log
+hf_cache/
+
+# Final evaluation (results/final): same convention as above -- summary tables,
+# figures, generated .tex and the two PDFs are committed; per-decision dumps,
+# per-headline scores, OOS prediction dumps and LaTeX byproducts are not.
+results/final/**/decisions_*.csv
+results/final/**/oos_*.csv
+results/final/scored_*.csv
+results/final/**/*.aux
+results/final/**/*.log
+results/final/**/*.nav
+results/final/**/*.out
+results/final/**/*.snm
+results/final/**/*.toc
