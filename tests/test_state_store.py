@@ -265,7 +265,7 @@ def test_cli_db_backup_creates_a_file(tmp_path):
 
     backup_dir = tmp_path / "backups"
     result = subprocess.run(
-        [str(Path(__file__).resolve().parent.parent / ".venv" / "bin" / "python"),
+        [sys.executable,
          "-m", "nse_agents.cli", "db-backup", "--db", str(db_path), "--backup-dir", str(backup_dir)],
         capture_output=True, text=True, timeout=30,
         cwd=Path(__file__).resolve().parent.parent,
@@ -279,7 +279,7 @@ def test_cli_db_backup_on_missing_db_exits_nonzero(tmp_path):
     import subprocess
 
     result = subprocess.run(
-        [str(Path(__file__).resolve().parent.parent / ".venv" / "bin" / "python"),
+        [sys.executable,
          "-m", "nse_agents.cli", "db-backup", "--db", str(tmp_path / "does_not_exist.sqlite")],
         capture_output=True, text=True, timeout=30,
         cwd=Path(__file__).resolve().parent.parent,
@@ -296,7 +296,7 @@ def test_cli_db_vacuum_runs_cleanly_and_preserves_data(tmp_path):
     before_qty = setup.snapshot().positions["TCS"].quantity
 
     result = subprocess.run(
-        [str(Path(__file__).resolve().parent.parent / ".venv" / "bin" / "python"),
+        [sys.executable,
          "-m", "nse_agents.cli", "db-vacuum", "--db", str(db_path)],
         capture_output=True, text=True, timeout=30,
         cwd=Path(__file__).resolve().parent.parent,
