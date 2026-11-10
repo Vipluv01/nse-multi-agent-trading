@@ -1,0 +1,47 @@
+name: Deploy demo site
+
+# Publishes the self-contained demo page plus the two PDFs it links to.
+# Layout mirrors results/final/ so the page's relative "../*.pdf" links resolve:
+#   /demo/index.html, /MTP_Final_Report.pdf, /MTP_Final_Presentation.pdf
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "results/final/demo/**"
+      - "results/final/MTP_Final_Report.pdf"
+      - "results/final/MTP_Final_Presentation.pdf"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          mkdir -p _site/demo
+          cp results/final/demo/index.html _site/demo/index.html
+          cp results/final/MTP_Final_Report.pdf results/final/MTP_Final_Presentation.pdf _site/
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><title>MTP demo</title>' \
+            '<meta http-equiv="refresh" content="0; url=demo/">' \
+            '<a href="demo/">Open the demo</a>' > _site/index.html
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
