@@ -31,7 +31,7 @@ from scripts.generate_paper import (
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-PY = str(ROOT / ".venv" / "bin" / "python")
+PY = sys.executable
 
 
 def test_escape_handles_every_documented_special_character():

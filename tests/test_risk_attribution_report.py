@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-PY = str(ROOT / ".venv" / "bin" / "python")
+PY = sys.executable
 
 
 @pytest.mark.skipif(

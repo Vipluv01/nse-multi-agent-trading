@@ -7,6 +7,7 @@ check that never fires at all. The one end-to-end test performs a real build
 via `uv build` / `python -m build` and is skipped if neither is available.
 """
 
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -28,7 +29,7 @@ from scripts.build_distribution import (
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-PY = str(ROOT / ".venv" / "bin" / "python")
+PY = sys.executable
 
 
 def _make_wheel(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -158,8 +159,8 @@ def test_render_changelog_includes_the_version_header():
 
 
 @pytest.mark.skipif(
-    not (shutil.which("uv") or shutil.which("python") and _real_source_modules()),
-    reason="requires a usable Python build frontend",
+    not (shutil.which("uv") or importlib.util.find_spec("build")),
+    reason="requires a build frontend: `uv`, or the `build` package for `python -m build`",
 )
 def test_build_distribution_runs_end_to_end_and_writes_a_clean_changelog(tmp_path):
     result = subprocess.run(
