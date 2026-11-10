@@ -40,6 +40,12 @@ class OrchestratorConfig:
     conviction_floor: float = 0.10
     batch_size: int = 16
     verbose: bool = True
+    # No-trade band (final evaluation; default 0 = the mid-semester behaviour).
+    # A held position whose new target differs from its current weight by less
+    # than this is left alone: daily volatility rescaling otherwise generates a
+    # stream of tiny resizes, each paying ~16 bps a side. Entries and exits are
+    # never banded, so the risk layer can always take a position to zero.
+    rebalance_band: float = 0.0
 
 
 class _RunningStats:
@@ -119,6 +125,19 @@ class Orchestrator:
         straddles = min(values) < 0 < max(values)
         return straddles or (max(values) - min(values)) > self.config.disagreement_threshold
 
+    def _apply_band(self, day, capped, held, risk_manager):
+        """Keep a held position's weight when the change is inside the band."""
+        banded = []
+        for decision, (size, notes) in zip(day, capped):
+            prev = held.get(decision.symbol, 0.0)
+            if prev > 0 and size > 0 and abs(size - prev) < self.config.rebalance_band:
+                note = f"held at {prev:.3f} (target {size:.3f} within no-trade band)"
+                banded.append((prev, list(notes) + [note]))
+            else:
+                banded.append((size, notes))
+        # Holding prior weights can push the book back over the gross limit.
+        return risk_manager.apply_gross_cap(banded)
+
     def run(
         self,
         pairs: pd.DataFrame,
@@ -171,6 +190,7 @@ class Orchestrator:
 
         # ---- pass 3: decide, sequentially ----------------------------------
         state = RiskState()
+        held: dict[str, float] = {}
         decisions: list[Decision] = []
         rows: list[dict] = []
         risk_manager = self.trader.risk
@@ -193,6 +213,8 @@ class Orchestrator:
             # Portfolio-level constraint, applied once the whole day's book is
             # known. Per-name sizing cannot see the rest of the book.
             capped = risk_manager.apply_gross_cap([(d.size, d.risk_notes) for d in day])
+            if self.config.rebalance_band > 0:
+                capped = self._apply_band(day, capped, held, risk_manager)
             day_returns, day_weights = [], []
             for decision, row, (size, notes) in zip(day, day_rows, capped):
                 # The rationale was written before the portfolio cap was known,
@@ -205,6 +227,7 @@ class Orchestrator:
                     decision.rationale += " [risk] " + "; ".join(added) + "."
                 if size <= 0 and decision.action == "BUY":
                     decision.action = "HOLD"
+                held[decision.symbol] = size
                 decisions.append(decision)
                 record = decision.to_row()
                 record["fwd_ret"] = row.fwd_ret

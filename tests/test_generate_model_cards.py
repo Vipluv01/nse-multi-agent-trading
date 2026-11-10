@@ -17,7 +17,7 @@ from scripts.generate_model_cards import (
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-PY = str(ROOT / ".venv" / "bin" / "python")
+PY = sys.executable
 
 
 def test_regime_agent_card_runs_with_no_cached_reports_and_still_produces_text():

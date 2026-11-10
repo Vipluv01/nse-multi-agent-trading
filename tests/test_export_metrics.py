@@ -15,7 +15,7 @@ from nse_agents.cli import _json_default, _load_strategy_for_export
 from nse_agents.config import RESULTS
 
 ROOT = Path(__file__).resolve().parent.parent
-PY = str(ROOT / ".venv" / "bin" / "python")
+PY = sys.executable
 
 
 def test_json_default_converts_numpy_scalars_to_native_python_types():

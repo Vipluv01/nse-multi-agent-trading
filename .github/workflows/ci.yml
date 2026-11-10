@@ -59,10 +59,11 @@ jobs:
         run: python scripts/generate_paper.py
 
       - name: Compile LaTeX to PDF
-        # A full TeX Live image (unlike the TinyTeX + `tlmgr install ieeetran`
-        # combination documented in KNOWN_ISSUES.md #14 for local development)
-        # already ships the IEEEtran class, so no extra package step is needed
-        # here.
+        # A full TeX Live image (unlike the TinyTeX + `tlmgr install ieeetran
+        # preprint` combination documented in KNOWN_ISSUES.md #14 for local
+        # development -- `preprint`, not `balance`, is the actual package
+        # name for `balance.sty`) already ships the IEEEtran class and the
+        # `balance` package, so no extra package step is needed here.
         uses: xu-cheng/latex-action@v3
         with:
           root_file: results/paper.tex
