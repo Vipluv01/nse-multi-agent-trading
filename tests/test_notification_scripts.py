@@ -6,8 +6,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
-PY = str(ROOT / ".venv" / "bin" / "python")
+PY = sys.executable
+PRODUCTION_MODEL = ROOT / "results" / "production" / "technical_model.pt"
 
 
 def test_premarket_briefing_dry_run_succeeds_and_prints_a_briefing():
@@ -30,6 +33,10 @@ def test_eod_summary_dry_run_reports_missing_state_cleanly(tmp_path):
     assert "no paper-trading state" in result.stdout
 
 
+@pytest.mark.skipif(
+    not PRODUCTION_MODEL.exists(),
+    reason="needs the gitignored production checkpoint (scripts/train_production_model.py)",
+)
 def test_eod_summary_dry_run_succeeds_against_real_state(tmp_path):
     db_path = tmp_path / "state.sqlite"
     setup = subprocess.run(

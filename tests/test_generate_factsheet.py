@@ -17,7 +17,7 @@ from nse_agents.config import RESULTS
 from scripts.generate_factsheet import _to_markdown_table, monthly_return_matrix
 
 ROOT = Path(__file__).resolve().parent.parent
-PY = str(ROOT / ".venv" / "bin" / "python")
+PY = sys.executable
 
 
 def test_monthly_return_matrix_compounds_correctly_within_a_month():

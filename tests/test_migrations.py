@@ -106,7 +106,7 @@ def test_cli_db_migrate_on_a_fresh_db_initializes_and_reports_up_to_date(tmp_pat
 
     db_path = tmp_path / "state.sqlite"
     result = subprocess.run(
-        [str(Path(__file__).resolve().parent.parent / ".venv" / "bin" / "python"),
+        [sys.executable,
          "-m", "nse_agents.cli", "db-migrate", "--db", str(db_path)],
         capture_output=True, text=True, timeout=30,
         cwd=Path(__file__).resolve().parent.parent,
@@ -126,7 +126,7 @@ def test_cli_db_migrate_on_an_existing_db_preserves_trades_and_reports_current_v
                            timestamp=pd.Timestamp.now()), "2026-08-20")
 
     result = subprocess.run(
-        [str(Path(__file__).resolve().parent.parent / ".venv" / "bin" / "python"),
+        [sys.executable,
          "-m", "nse_agents.cli", "db-migrate", "--db", str(db_path)],
         capture_output=True, text=True, timeout=30,
         cwd=Path(__file__).resolve().parent.parent,

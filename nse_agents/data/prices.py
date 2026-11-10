@@ -12,7 +12,9 @@ happily learn.
 
 from __future__ import annotations
 
+import http.client
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -26,8 +28,34 @@ from ..config import DATA_CACHE
 _UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
 _CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
 
-PRICE_CACHE = DATA_CACHE / "prices"
+# The study's price cache is a frozen snapshot. Yahoo rewrites *past* adjusted
+# prices whenever a dividend is paid (and has also removed phantom holiday bars
+# it once served), so refreshing this folder in place silently changes the data
+# behind every published number. Other consumers use their own folder, selected
+# per call by NSE_AGENTS_PRICE_CACHE:
+#   data_cache/prices       -- the walk-forward study (default; never refreshed)
+#   data_cache/prices_ext   -- the final-evaluation extended universe/period
+#   data_cache/prices_live  -- the live/paper-trading pipeline (refreshed daily)
+STUDY_PRICE_CACHE = DATA_CACHE / "prices"
+LIVE_PRICE_CACHE = DATA_CACHE / "prices_live"
+PRICE_CACHE = Path(os.environ.get("NSE_AGENTS_PRICE_CACHE", STUDY_PRICE_CACHE))
 PRICE_CACHE.mkdir(parents=True, exist_ok=True)
+
+
+def price_cache_dir() -> Path:
+    """The cache folder for this call (env is read per call, not at import)."""
+    path = Path(os.environ.get("NSE_AGENTS_PRICE_CACHE", STUDY_PRICE_CACHE))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def use_live_price_cache() -> None:
+    """Called by every live entry point before it loads any price."""
+    os.environ["NSE_AGENTS_PRICE_CACHE"] = str(LIVE_PRICE_CACHE)
+
+
+class FrozenCacheError(RuntimeError):
+    """A refresh was requested against the frozen study cache."""
 
 
 def _yahoo_symbol(symbol: str) -> str:
@@ -35,7 +63,7 @@ def _yahoo_symbol(symbol: str) -> str:
     return symbol if symbol.startswith("^") else f"{symbol}.NS"
 
 
-def _fetch(symbol: str, start: str, end: str, retries: int = 3) -> pd.DataFrame:
+def _fetch(symbol: str, start: str, end: str, retries: int = 5) -> pd.DataFrame:
     p1 = int(pd.Timestamp(start, tz="UTC").timestamp())
     p2 = int(pd.Timestamp(end, tz="UTC").timestamp())
     url = (
@@ -48,7 +76,16 @@ def _fetch(symbol: str, start: str, end: str, retries: int = 3) -> pd.DataFrame:
             req = urllib.request.Request(url, headers=_UA)
             payload = json.loads(urllib.request.urlopen(req, timeout=30).read())
             break
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        # IncompleteRead / ConnectionError: a truncated chunked transfer is a
+        # transient network fault exactly like a timeout, and must be retried
+        # rather than abort a 30-symbol fetch on its first flaky response.
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            json.JSONDecodeError,
+            http.client.IncompleteRead,
+            ConnectionError,
+        ) as exc:
             last = exc
             time.sleep(2.0 * (attempt + 1))
     else:
@@ -90,7 +127,15 @@ def load_prices(
     symbol: str, start: str, end: str, refresh: bool = False
 ) -> pd.DataFrame:
     """Return adjusted daily OHLCV for one symbol, caching to disk."""
-    path: Path = PRICE_CACHE / f"{symbol.replace('^', 'IDX_')}.csv"
+    cache = price_cache_dir()
+    path: Path = cache / f"{symbol.replace('^', 'IDX_')}.csv"
+    if refresh and path.exists() and cache.resolve() == STUDY_PRICE_CACHE.resolve():
+        # This happened once (live/snapshot.py, Nov 2026) and rewrote all ten
+        # study files; see KNOWN_ISSUES.md #18. Refusing is the only safe default.
+        raise FrozenCacheError(
+            f"refusing to refresh {path}: the study cache is frozen. Live code must "
+            "call nse_agents.data.prices.use_live_price_cache() first."
+        )
     if path.exists() and not refresh:
         frame = pd.read_csv(path, parse_dates=["date"])
     else:

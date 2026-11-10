@@ -43,6 +43,9 @@ OUT = RESULTS / "paper_trading"
 
 
 def main() -> int:
+    from nse_agents.data.prices import use_live_price_cache
+
+    use_live_price_cache()  # never touch the frozen study cache (KNOWN_ISSUES #18)
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=str(RESULTS / "production" / "technical_model.pt"))
     ap.add_argument("--backend", default="local", choices=["local", "anthropic", "openai", "echo", "none"])

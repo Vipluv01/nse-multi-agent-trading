@@ -377,4 +377,74 @@ resolve; no badges or LaTeX math blocks currently exist, the latter by design si
 doesn't reliably render LaTeX math in READMEs). Applying repo metadata itself needs `gh`
 CLI/auth this environment doesn't have -- manual steps included instead.
 
+### Add a compare-models command and a distribution build check (`f36b62a9`)
+
+compare-models (cli.py): side-by-side terminal table (Net Sharpe, CAGR, MaxDD, turnover,
+Holm-corrected p vs Buy&Hold) for any two strategies, read entirely from
+results/agents/summary.csv and vs_buyhold.csv. Caught and fixed a real column-alignment
+bug: sizing width from strategy names alone left the "n/a (is Buy&Hold)" label
+overflowing past the numeric rows above it.
+
+build_distribution.py: runs a real `uv build`, then verifies the wheel contains every
+real nse_agents/ source module and nothing else (no data_cache/results bloat -- correct
+packaging practice, not a gap) and the sdist contains the paper artifacts, result
+tables, and scripts/ (which is what "wheels include paper artifacts" actually means for
+a Python distribution -- see KNOWN_ISSUES.md #16). results/CHANGELOG.md is generated
+from real git log output, not hand-summarized -- a test asserts every real commit
+subject appears in it.
+
+A CI workflow (.github/workflows/ci.yml) was also written this round but is committed
+separately -- pushing it requires a git credential with the `workflow` OAuth scope,
+which this environment's credential doesn't have.
+
+### Add GitHub Actions CI workflow (`26be6040`)
+
+Two jobs: test (pytest, with the [dashboard] extra so tests/test_dashboard_render.py's
+real Streamlit AppTest coverage actually runs in CI, not just [dev] as originally
+specified) and paper-pdf (regenerates results/paper.tex from cached result tables,
+compiles it with a full TeX Live image, verifies a real non-trivial PDF is produced).
+
+Structurally validated (YAML parses correctly) and every constituent step verified to
+run correctly locally (dependency install, pytest, generate_paper.py, pdflatex) -- not
+yet exercised on a real GitHub Actions runner, since pushing it needs a git credential
+with the `workflow` OAuth scope this environment's credential doesn't have.
+
+### Fix LaTeX overfull hbox warnings: resize tables, balance final-page columns (`2e3f1e84`)
+
+Both Overfull \hbox warnings were real, from genuinely-too-wide tables (6 and 5
+columns respectively -- a 95% CI column like "[-0.58, +0.85]" isn't content a
+font-size tweak could reliably trim). Fixed at the source (scripts/generate_paper.py's
+_booktabs_table, not by hand-patching the generated .tex), which now wraps every
+table in \resizebox{\columnwidth}{!}{...} -- fits by construction regardless of future
+row/column count, not by hoping a fixed point size happens to be small enough.
+
+Also added \balance (\usepackage{balance}) before the bibliography, per IEEEtran's
+own compiler note about equalizing the last page's two columns before a camera-ready
+submission. balance.sty is part of the `preprint` package on CTAN/TeX Live, not a
+package literally named `balance` -- tlmgr install preprint, documented everywhere
+this project mentions the ieeetran install step.
+
+Recompiled with TinyTeX + graphicx + preprint: zero fatal LaTeX errors AND zero
+Overfull/Underfull \hbox warnings of any kind, not just the two originally flagged.
+Verified table content survived the resize via PDF text extraction. results/paper.pdf
+committed as the new compiled output.
+
+Also hardened tests/test_notifier.py's live Telegram schema test: a network-level
+failure to reach api.telegram.org (confirmed real and reproducible in this sandbox --
+github.com/pypi.org both respond instantly from the same machine) now skips with a
+clear reason instead of failing the suite, since real credentials can't fix a host's
+network policy and shouldn't be blamed for it.
+
+The CI workflow comment update (same fix, for the workflow's own pdflatex step) is
+committed separately -- pushing it needs the `workflow` OAuth scope this environment's
+credential doesn't have.
+
+### Update CI workflow comment: LaTeX compile step also needs the preprint package (`109bf1eb`)
+
+Comment-only change, matching scripts/generate_paper.py's own docstring update:
+balance.sty (needed for \balance before the bibliography) is part of the preprint
+package, not a package literally named balance. The full TeX Live image this
+workflow's paper-pdf job uses already ships it, so no step changes -- just an
+accurate comment.
+
 ===END===

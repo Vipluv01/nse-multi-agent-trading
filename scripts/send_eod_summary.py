@@ -29,6 +29,9 @@ from nse_agents.live.state_store import DEFAULT_DB_PATH, PaperTradingStore
 
 
 def main() -> int:
+    from nse_agents.data.prices import use_live_price_cache
+
+    use_live_price_cache()  # never touch the frozen study cache (KNOWN_ISSUES #18)
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(DEFAULT_DB_PATH))
     ap.add_argument("--dry-run", action="store_true")
