@@ -189,9 +189,9 @@ def main() -> int:
         rows = pd.DataFrame({"Strategy": [esc(s) for s in SE["strategy"]], "Sharpe": [f2(v) for v in SE["Sharpe(net,excess)"]],
                              "MaxDD": [pc(v) for v in SE["MaxDD"]], "Turnover": [f"{v:.0f}x" for v in SE["Turnover/yr"]]})
         F.append(frame(f"Extended: {len(meta_ext['symbols'])} names, data to {meta_ext['last']}",
-                       r"\begin{columns}\begin{column}{0.42\textwidth}" + tab(rows, "lrrr", "\\tiny")
+                       r"\begin{columns}\begin{column}{0.50\textwidth}" + tab(rows, "lrrr", "\\tiny")
                        + r"\\[0.5em]\small The null replicates on 3$\times$ the names and on data the mid-sem never saw."
-                       + r"\end{column}\begin{column}{0.58\textwidth}" + img("equity_extended.png", "0.7\\textheight")
+                       + r"\end{column}\begin{column}{0.50\textwidth}" + img("equity_extended.png", "0.7\\textheight")
                        + r"\end{column}\end{columns}"))
     if audit is not None and dele is not None:
         mid = audit[audit["run"] == "mid-sem"].iloc[0]
