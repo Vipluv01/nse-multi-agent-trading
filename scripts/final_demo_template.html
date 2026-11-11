@@ -93,6 +93,54 @@ tr.bh td { font-weight: 650; background: var(--accent-soft); }
 pre { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; overflow-x: auto; font-size: 13px; margin: 0; }
 a { color: var(--s1); }
 footer { margin-top: 48px; color: var(--text-3); font-size: 13px; }
+
+nav.top { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+nav.top .in { max-width: 1060px; margin: 0 auto; padding: 8px 16px; display: flex; gap: 4px 14px; flex-wrap: wrap; font-size: 13.5px; }
+nav.top a { color: var(--text-2); text-decoration: none; padding: 2px 0; }
+nav.top a:hover { color: var(--text); text-decoration: underline; }
+section { scroll-margin-top: 56px; }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-top: 8px; }
+details summary { cursor: pointer; font-weight: 650; }
+details p, details li { color: var(--text-2); font-size: 14px; }
+details p { margin: 8px 0 2px; max-width: 80ch; }
+select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; padding: 5px 8px; max-width: 100%; }
+.chart svg.small { height: 150px; }
+.rowchart { display: grid; grid-template-columns: minmax(120px, 250px) 1fr minmax(90px, 170px); column-gap: 12px; align-items: center; font-size: 13.5px; }
+.rc-row { display: contents; }
+.rowchart .nm { padding: 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rowchart .nm.bh { font-weight: 700; }
+.rowchart .val { font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
+.track { position: relative; height: 26px; }
+.track .ref { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-strong); }
+.track .ref.bhline { background: none; border-left: 1.5px dashed var(--text-3); }
+.track .whisk { position: absolute; top: 12px; height: 2px; background: var(--text-3); border-radius: 1px; }
+.track .dot { position: absolute; top: 7px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2px solid var(--surface); }
+.track .fill { position: absolute; top: 6px; height: 14px; border-radius: 4px; }
+.track .seg { position: absolute; top: 6px; height: 14px; border-radius: 3px; }
+.sq { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
+.legend .sq { width: 10px; height: 10px; }
+.axisnote { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vtag { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; padding: 2px 7px; border-radius: 5px; border: 1.5px solid var(--line-strong); margin-bottom: 6px; }
+.live-row { display: grid; grid-template-columns: 180px 80px 80px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: start; font-size: 14px; font-variant-numeric: tabular-nums; }
+.live-row:last-child { border-bottom: 0; }
+.live-row details { border: 0; padding: 0; margin: 0; background: none; }
+.live-row details summary { font-weight: 500; color: var(--text-2); font-size: 13.5px; }
+.live-row .lk { font-size: 11.5px; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; display: block; }
+td.l, th.l { text-align: left; white-space: normal; min-width: 130px; }
+.src { font-size: 12px; color: var(--text-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.loading { color: var(--text-3); font-style: italic; padding: 20px 0; }
+@media (max-width: 760px) {
+  .g3 { grid-template-columns: 1fr; }
+  .rowchart { display: block; font-size: 12.5px; }
+  .rc-row { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; }
+  .rc-row .nm { grid-column: 1; grid-row: 1; padding: 6px 0 0; }
+  .rc-row .val { grid-column: 2; grid-row: 1; text-align: right; padding-top: 6px; }
+  .rc-row .track { grid-column: 1 / -1; grid-row: 2; }
+  nav.top .in { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; }
+  .live-row { grid-template-columns: 1fr 1fr 1fr; }
+  .live-row > :last-child { grid-column: 1 / -1; }
+}
 @media (max-width: 760px) {
   h1 { font-size: 24px; }
   .tiles, .grid2 { grid-template-columns: 1fr 1fr; }
@@ -103,9 +151,14 @@ footer { margin-top: 48px; color: var(--text-3); font-size: 13px; }
 </style>
 </head>
 <body>
+<nav class="top"><div class="in">
+  <a href="#top">Overview</a><a href="#how">How it works</a><a href="#decisions">Decision explorer</a><a href="#results">Results</a>
+  <a href="#stress">Stress periods</a><a href="#models">Models</a><a href="#november">November findings</a><a href="#explain">Explainability</a>
+  <a href="#live">Live pipeline</a><a href="#tables">All result tables</a><a href="#limits">Limitations</a><a href="#downloads">Downloads</a>
+</div></nav>
 <div class="wrap">
 
-<header>
+<header id="top">
   <div class="eyebrow">Master's Thesis Project · Final evaluation · IIT Kharagpur</div>
   <h1>A Multi-Agent LLM Framework for Explainable Algorithmic Trading on NSE-Listed Equities</h1>
   <div class="byline" id="byline"></div>
@@ -113,22 +166,32 @@ footer { margin-top: 48px; color: var(--text-3); font-size: 13px; }
   <div class="tiles" id="tiles"></div>
 </header>
 
-<section>
+<section id="how">
   <h2>How a decision is made</h2>
   <p class="sub">Four agents each give a stance from −1 (bearish) to +1 (bullish) with a confidence, or abstain when they have no evidence. A trader combines them, and a rule-based risk manager has the final say on position size.</p>
   <div class="flow">
     <div class="step"><b>1 · Data</b>Adjusted prices, news headlines and annual reports, each visible only from the date it was public.</div>
     <div class="step"><b>2 · Four agents</b>Technical (LSTM with attention), sentiment (LLM on headlines), regime (trend and volatility), fundamentals.</div>
-    <div class="step"><b>3 · Debate</b>When conviction is low, an LLM scores a bull case against a bear case.</div>
+    <div class="step"><b>3 · Debate</b>On contested days an LLM scores a bull case against a bear case.</div>
     <div class="step"><b>4 · Trader</b>Confidence-weighted average of the stances gives one score; positive means buy.</div>
     <div class="step"><b>5 · Risk manager</b>Deterministic rules: volatility targeting, 20% cap per stock, 100% cap on the book.</div>
   </div>
+  <details><summary>Technical agent</summary><p>Peephole LSTM cells and a temporal-attention layer, written from scratch in PyTorch, trained on 30-day sequences of price, volume and indicator features to predict the probability that the stock rises from the next open to the following open. A 2×2 ablation (peephole on/off × attention on/off) with three seeds each isolates the architecture's contribution. Predictions are averaged over seeds; picking the best seed would be selecting on the test set.</p></details>
+  <details><summary>Sentiment agent</summary><p>An instruction-tuned LLM (Qwen2.5-1.5B locally; Qwen2.5-3B for the final comparison) labels each headline Good, Bad or Unknown for the stock. The backend reads the three labels' first-token logits in one forward pass instead of generating text, so the output is deterministic and never unparseable. Daily views average the headline scores; the agent abstains on days without news.</p></details>
+  <details><summary>Regime agent</summary><p>Four causal, equally weighted votes: price against its 200-day average, 60-day relative strength against the Nifty, position in the 52-week range, and (optionally) Nifty momentum. Confidence is cut in high-volatility states.</p></details>
+  <details><summary>Fundamentals agent (new for the final evaluation)</summary><p>Uses only annual statements, each treated as unknown until 61 days after the fiscal year end, one day past the SEBI LODR Regulation 33 deadline for audited results, so the agent can be late but never early. Net-profit growth, revenue growth, return on equity and change in ROE are z-scored across the universe on each decision date using only reports public on that date. Limitations: the source shows restated figures, and no valuation ratio is used.</p></details>
+  <details><summary>Debate, trader and risk manager</summary><p>On contested days a bull and a bear researcher argue from the agents' findings; the LLM scores the strength of each case and the residual moves the score by a fixed 35% weight. The trader takes a confidence-weighted mean of stances with no learned stacker. The deterministic risk manager applies a confidence floor, 20% volatility targeting, a drawdown brake, a 20% per-name cap and a 100% gross cap; idle cash earns a 6% risk-free rate. Two opt-in cost-aware components were added for the final evaluation: an edge-against-cost gate and a 5% no-trade band (entries and exits are never banded).</p></details>
+  <details><summary>Evaluation protocol and cost model</summary><p>Purged, embargoed walk-forward: 3-year training windows, 6-month test windows, a 10-day embargo, 16 folds. Positions are decided at the close of day t and executed at the open of t+1. Costs follow the 2026 delivery schedule: 0.1% STT each side, 0.015% stamp duty on buys, NSE and SEBI charges with GST, and 5 bps slippage, about 32 bps round trip. Sharpe ratios are in excess of 6%, with stationary block-bootstrap 95% intervals; differences against Buy&amp;Hold are Holm-corrected across all configurations, and the Deflated Sharpe Ratio accounts for the number of strategies tried.</p></details>
 </section>
 
-<section>
+<section id="decisions">
   <h2>Decision explorer</h2>
-  <p class="sub" id="explorerSub"></p>
+  <p class="sub">Real recorded decisions from the walk-forward backtest. Pick a configuration, a stock and a day to see what each agent said, how the trader combined them, and what the risk manager did. Arrow keys step through days.</p>
   <div class="card">
+    <div class="controls">
+      <span class="lbl">Configuration</span><select id="cfgSel" aria-label="Configuration"></select>
+    </div>
+    <div id="exBody">
     <div class="controls">
       <span class="lbl">Stock</span><div class="chips" id="symChips"></div>
     </div>
@@ -153,55 +216,147 @@ footer { margin-top: 48px; color: var(--text-3); font-size: 13px; }
         <div id="notes"></div>
       </div>
     </div>
+    </div>
+    <div class="loading" id="exLoading" hidden>Loading recorded decisions…</div>
   </div>
 </section>
 
-<section>
+<section id="results">
   <h2>Results after Indian transaction costs</h2>
   <p class="sub" id="resultsSub"></p>
+  <div class="controls"><span class="lbl">Universe</span><div class="chips" id="uniChips"></div></div>
   <div class="card">
-    <h3>Growth of ₹1, 10-stock study</h3>
+    <h3>Growth of ₹1, net of costs</h3>
     <div class="legend" id="eqLegend"></div>
     <div class="chart">
       <svg id="equity" role="img" aria-label="Growth of one rupee for Buy and Hold and two agent configurations"></svg>
       <div class="tip" id="eqTip"></div>
     </div>
+    <h3 style="margin-top:14px">Drawdown from the previous peak</h3>
+    <div class="chart">
+      <svg id="dd" class="small" role="img" aria-label="Drawdown for the same three strategies"></svg>
+      <div class="tip" id="ddTip"></div>
+    </div>
   </div>
   <div class="card" style="margin-top:12px">
-    <div class="controls">
-      <span class="lbl">Universe</span>
-      <div class="chips" id="uniChips"></div>
-    </div>
+    <h3>Net Sharpe ratio with 95% bootstrap interval</h3>
+    <div class="legend"><span><span class="sq" style="background:var(--s1)"></span>Agent configuration</span><span><span class="sq" style="background:var(--text-3)"></span>Classical baseline</span><span>┆ dashed line: Buy&amp;Hold</span></div>
+    <div id="forest"></div>
+    <p class="sub" id="forestNote" style="margin:10px 0 0;font-size:13px"></p>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h3>All strategies</h3>
     <div class="scroll"><table id="resTable"></table></div>
     <p class="sub" style="margin:10px 0 0;font-size:13px">Sharpe is net of costs and in excess of the risk-free rate. Holm p tests each strategy against Buy&amp;Hold with a block bootstrap, corrected for multiple comparisons.</p>
   </div>
 </section>
 
-<section>
+<section id="stress">
+  <h2>Stress periods</h2>
+  <p class="sub">Where the system earns its keep: the regime-aware configurations fall far less at the worst point of a crash. They also miss part of the rebound, and over the full period that protection costs more return than it saves.</p>
+  <div class="card">
+    <h3 id="covidTitle"></h3>
+    <div class="legend"><span><span class="sq" style="background:var(--s1)"></span>Agent configuration</span><span><span class="sq" style="background:var(--text-3)"></span>Classical baseline</span></div>
+    <div id="covid"></div>
+    <p class="sub" style="margin:10px 0 0;font-size:13px">Bars show the deepest fall from a peak inside the window; the figure in brackets is the total return from the first to the last day of the window, which includes the recovery.</p>
+  </div>
+  <h3 style="margin:18px 0 8px">Synthetic stress tests on the regime overlay</h3>
+  <p class="sub">Four synthetic price shocks laid on real recent prices, each compared with a matched zero-shock control on the same date. The technical agent abstains, so this isolates the regime overlay.</p>
+  <div class="grid2" id="stressCards"></div>
+</section>
+
+<section id="models">
+  <h2>The models on their own</h2>
+  <p class="sub">Before any trading rule: how good are the two learned components at their own task?</p>
+  <div class="card">
+    <h3>Technical model: next-day direction accuracy (10 stocks, 3 seeds each)</h3>
+    <div class="scroll"><table id="archTable"></table></div>
+    <p class="sub" style="margin:10px 0 0;font-size:13px">Chance is 50%. No architecture is distinguishable from a coin flip, with or without peepholes and attention.</p>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h3>Sentiment LLM: how each model labels headlines</h3>
+    <div class="legend"><span><span class="sq" style="background:var(--pos)"></span>Good</span><span><span class="sq" style="background:var(--neg)"></span>Bad</span><span><span class="sq" style="background:var(--neutral)"></span>Unknown</span></div>
+    <div id="labels"></div>
+    <p class="sub" style="margin:10px 0 0;font-size:13px">Figures on the right are the Good / Bad / Unknown shares. The 1.5B model calls about three headlines Good for every one it calls Bad. The 3B model is far less bullish and says Unknown about twice as often. Neither model's tone is a usable long-only signal.</p>
+  </div>
+</section>
+
+<section id="november">
   <h2>What the November work found</h2>
   <p class="sub">Each item from the mid-semester plan, with what it showed.</p>
   <div class="grid2" id="findings"></div>
 </section>
 
-<section>
+<section id="explain">
   <h2>Are the explanations real?</h2>
-  <p class="sub">An explanation is only useful if it matches what the system actually did. Three checks were run on every recorded decision.</p>
+  <p class="sub">An explanation is only useful if it matches what the system actually did. These checks were run on every recorded decision.</p>
   <div class="tiles" id="auditTiles" style="grid-template-columns:repeat(3,1fr)"></div>
+  <div class="card" style="margin-top:12px">
+    <h3>Deletion test: how often the decision flips when one agent is removed</h3>
+    <div class="legend"><span><span class="sq" style="background:var(--s1)"></span>Remove the agent the rationale names as most influential</span><span><span class="sq" style="background:var(--text-3)"></span>Remove another agent</span></div>
+    <div id="deletion"></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h3>Which agent carries the largest attribution in each decision</h3>
+    <div class="legend"><span><span class="sq" style="background:var(--s1)"></span>Regime</span><span><span class="sq" style="background:var(--s2)"></span>Fundamentals</span><span><span class="sq" style="background:var(--s3)"></span>Sentiment</span><span><span class="sq" style="background:var(--text-3)"></span>Technical</span></div>
+    <div id="decisive"></div>
+    <p class="sub" style="margin:10px 0 0;font-size:13px">The regime agent decides most outcomes and the technical model almost none. The system behaves as a trend filter with a risk overlay, which is why it protects capital in crashes and gives up return in rallies.</p>
+  </div>
 </section>
 
-<section>
-  <h2>Run it yourself</h2>
-  <p class="sub">The project is a Python package with over 350 tests. These commands run the test suite and the live pipeline on today's prices.</p>
-  <pre>cd nse_agents
-.venv/bin/python -m pytest tests/ -q
-.venv/bin/python scripts/run_live_signal.py --backend local
-streamlit run scripts/dashboard.py</pre>
-  <p style="margin-top:14px">
+<section id="live">
+  <h2>Live pipeline, recorded</h2>
+  <p class="sub">The same agents run on the day's real prices and headlines produce the signals below. These are saved outputs of real runs, shown here so nothing needs to be run during the evaluation. Demonstration only: no configuration in this study has a market-beating edge.</p>
+  <div class="card">
+    <div class="controls"><span class="lbl">Run date</span><div class="chips" id="liveChips"></div></div>
+    <p class="sub" id="liveModel" style="font-size:13px;margin-bottom:6px"></p>
+    <div id="liveRows"></div>
+  </div>
+  <div class="card" style="margin-top:12px" id="paperCard">
+    <h3>Simulated paper-trading account</h3>
+    <p class="sub" id="paperNote" style="font-size:13px"></p>
+    <div id="paper"></div>
+  </div>
+</section>
+
+<section id="tables">
+  <h2>All result tables</h2>
+  <p class="sub">Every table behind the report and the supporting analyses, read from the result files. Pick a group and a table.</p>
+  <div class="card">
+    <div class="controls"><span class="lbl">Group</span><div class="chips" id="grpChips"></div></div>
+    <div class="controls"><span class="lbl">Table</span><select id="tblSel" aria-label="Table"></select></div>
+    <p class="sub" id="tblNote" style="margin-bottom:4px"></p>
+    <div class="src" id="tblSrc"></div>
+    <div class="scroll" style="margin-top:10px;max-height:560px;overflow-y:auto"><table id="anyTable"></table></div>
+  </div>
+</section>
+
+<section id="limits">
+  <h2>Limitations</h2>
+  <div class="grid2">
+    <div class="card find"><h3>Statistical power</h3><p>The bootstrap test reliably detects a Sharpe difference of about 1.0 over this window, not smaller. “No significant difference” is not “proven identical”.</p></div>
+    <div class="card find"><h3>Model scale</h3><p>No hosted frontier model was available; the comparison is 1.5B against 3B open models. A frontier model could behave differently.</p></div>
+    <div class="card find"><h3>Survivorship</h3><p>Both universes are today's large caps, which flatters Buy&amp;Hold more than the agents.</p></div>
+    <div class="card find"><h3>Fundamentals and news</h3><p>Disclosure-lagged but restated annual figures, with no valuation ratio. Headlines cover ten names; the extended universe has no sentiment agent.</p></div>
+  </div>
+</section>
+
+<section id="downloads">
+  <h2>Downloads</h2>
+  <p>
     <a href="../MTP_Final_Report.pdf">Final report (PDF)</a> ·
     <a href="../MTP_Short_Report.pdf">4-page short report (PDF)</a> ·
     <a href="../MTP_Final_Presentation.pdf">Presentation (PDF)</a> ·
     <a href="https://github.com/Vipluv01/nse-multi-agent-trading">Source code on GitHub</a>
   </p>
+  <details><summary>Reproduce from source (optional)</summary>
+  <pre style="margin-top:10px;border:0;padding:0">cd nse_agents
+.venv/bin/python -m pytest tests/ -q
+.venv/bin/python scripts/final_run_ablation.py --experiment core --debate
+.venv/bin/python scripts/final_run_ablation.py --experiment extended
+.venv/bin/python scripts/final_explainability.py
+.venv/bin/python scripts/final_make_report.py
+.venv/bin/python scripts/final_make_demo_site.py</pre></details>
 </section>
 
 <footer id="footer"></footer>
@@ -217,6 +372,7 @@ const pct = (v, d = 1) => (v < 0 ? "−" : "") + Math.abs(v * 100).toFixed(d) + 
 const spct = (v, d = 2) => (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(d) + "%";
 const fdate = s => new Date(s + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 const svgEl = (tag, attrs) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+const kindCol = k => (k === "agents" ? "var(--s1)" : "var(--text-3)");
 
 // ---- header ---------------------------------------------------------------
 $("byline").textContent = D.byline;
@@ -230,14 +386,8 @@ function tiles(target, items) {
 }
 tiles("tiles", D.tiles);
 tiles("auditTiles", D.audit);
-$("explorerSub").textContent = D.explorer.sub;
 $("resultsSub").textContent = D.resultsSub;
 $("footer").textContent = D.footer;
-
-// ---- decision explorer ------------------------------------------------------
-const X = D.explorer, AG = ["technical", "sentiment", "regime", "fundamentals"];
-const st = { sym: X.symbols[0], win: 0, i: 0 };
-const rows = () => X.rows[st.sym].filter(r => r.d >= X.windows[st.win].start && r.d <= X.windows[st.win].end);
 
 function chips(target, labels, isOn, onPick) {
   const box = $(target); box.innerHTML = "";
@@ -245,6 +395,29 @@ function chips(target, labels, isOn, onPick) {
     const b = el("button", null, esc(lab));
     b.setAttribute("aria-pressed", isOn(k)); b.onclick = () => onPick(k); box.append(b);
   });
+}
+
+// ---- decision explorer ------------------------------------------------------
+let X = null;
+const st = { cfg: 0, sym: null, win: 0, i: 0 };
+const rows = () => X.rows[st.sym].filter(r => r.d >= X.windows[st.win].start && r.d <= X.windows[st.win].end);
+
+D.explorerIndex.forEach((c, k) => { const o = el("option", null, esc(c.label)); o.value = k; $("cfgSel").append(o); });
+$("cfgSel").onchange = ev => loadExplorer(+ev.target.value);
+function loadExplorer(k) {
+  st.cfg = k;
+  const ready = () => {
+    X = window.EXPLORER_DATA[k];
+    if (!X.symbols.includes(st.sym)) st.sym = X.symbols[0];
+    st.i = rows().length - 1;
+    $("exLoading").hidden = true; $("exBody").hidden = false; render();
+  };
+  if (window.EXPLORER_DATA && window.EXPLORER_DATA[k]) return ready();
+  $("exBody").hidden = true; $("exLoading").hidden = false; $("exLoading").textContent = "Loading recorded decisions…";
+  const sc = document.createElement("script"); sc.src = D.explorerIndex[k].file;
+  sc.onload = ready;
+  sc.onerror = () => { $("exLoading").textContent = "Could not load " + D.explorerIndex[k].file + ". Keep the data folder next to index.html."; };
+  document.head.append(sc);
 }
 function drawControls() {
   chips("symChips", X.symbols, k => X.symbols[k] === st.sym, k => { st.sym = X.symbols[k]; render(); });
@@ -293,7 +466,7 @@ function drawDecision() {
     kv("Next-day return", r.f == null ? "n/a" : spct(r.f)));
   v.append(el("div", "conf", `<p style="font-size:12px;color:var(--text-3);margin:10px 0 0">The next-day return is the outcome, shown for reference. It was not known when the decision was made.</p>`));
   const box = $("agents"); box.innerHTML = "";
-  AG.forEach(name => {
+  X.agents.forEach(name => {
     const a = r.ag[name], row = el("div", "agent" + (a.x ? " abst" : ""));
     row.append(el("div", null, `<div class="name">${name[0].toUpperCase() + name.slice(1)}</div><div class="conf">${a.x ? "abstained" : "confidence " + a.c.toFixed(2)}</div>`));
     row.append(el("div", null, a.x ? `<div class="bar"></div><div class="bar-num">no stance</div>` : `${stanceBar(a.s)}<div class="bar-num">stance ${sgn(a.s)}</div>`));
@@ -304,7 +477,7 @@ function drawDecision() {
   if (r.dt) notes.append(el("div", "note", `<b>Debate.</b> ${esc(r.dt)}`));
   if (r.rk) notes.append(el("div", "note risk", `<b>Risk manager.</b> ${esc(r.rk)}`));
 }
-function render() { const n = rows().length; if (st.i >= n) st.i = n - 1; drawControls(); drawStrip(); drawDecision(); }
+function render() { if (!X) return; const n = rows().length; if (st.i >= n) st.i = n - 1; drawControls(); drawStrip(); drawDecision(); }
 $("prev").onclick = () => { if (st.i > 0) { st.i--; render(); } };
 $("next").onclick = () => { if (st.i < rows().length - 1) { st.i++; render(); } };
 $("nextBuy").onclick = () => {
@@ -313,28 +486,35 @@ $("nextBuy").onclick = () => {
   if (k >= R.length) { k = 0; while (k < st.i && R[k].a === R[st.i].a) k++; }
   st.i = k; render();
 };
-document.addEventListener("keydown", ev => { if (ev.key === "ArrowLeft") $("prev").click(); if (ev.key === "ArrowRight") $("next").click(); });
-st.i = rows().length - 1;
+document.addEventListener("keydown", ev => {
+  if (!X || /^(SELECT|INPUT|TEXTAREA)$/.test(ev.target.tagName)) return;
+  if (ev.key === "ArrowLeft") $("prev").click(); if (ev.key === "ArrowRight") $("next").click();
+});
 
-// ---- equity chart -----------------------------------------------------------
-const EQ = D.equity, COL = ["var(--s1)", "var(--s2)", "var(--s3)"];
-function drawEquity() {
-  const svg = $("equity"), W = svg.clientWidth || 900, H = 340, m = { l: 44, r: 205, t: 10, b: 26 };
+// ---- line charts (growth of 1, drawdown) --------------------------------------
+const COL = ["var(--s1)", "var(--s2)", "var(--s3)"];
+let uni = "core";
+function lineChart(svgId, tipId, key, H, fmt, tickStep, endLabels) {
+  const EQ = D.equity[uni], svg = $(svgId), W = svg.clientWidth || 900;
+  const narrow = W < 560, m = { l: 48, r: endLabels && !narrow ? 190 : 12, t: 10, b: 26 };
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = "";
-  const n = EQ.dates.length, all = EQ.series.flatMap(s => s.v), lo = Math.min(...all), hi = Math.max(...all);
+  const n = EQ.dates.length, all = EQ.series.flatMap(s => s[key]);
+  let lo = Math.min(...all), hi = Math.max(...all); if (key === "dd") hi = 0;
   const x = k => m.l + k / (n - 1) * (W - m.l - m.r), y = v => H - m.b - (v - lo) / (hi - lo) * (H - m.t - m.b);
-  for (let g = Math.ceil(lo * 2) / 2; g <= hi; g += 0.5) {
+  for (let g = Math.ceil(lo / tickStep) * tickStep; g <= hi + 1e-9; g += tickStep) {
     svg.append(svgEl("line", { x1: m.l, x2: W - m.r, y1: y(g), y2: y(g), stroke: "var(--line)" }));
-    const t = svgEl("text", { x: m.l - 8, y: y(g) + 4, "text-anchor": "end", "font-size": 11, fill: "var(--text-3)" }); t.textContent = "₹" + g.toFixed(1); svg.append(t);
+    const t = svgEl("text", { x: m.l - 8, y: y(g) + 4, "text-anchor": "end", "font-size": 11, fill: "var(--text-3)" }); t.textContent = fmt(g, true); svg.append(t);
   }
   let lastYear = "";
-  EQ.dates.forEach((d, k) => { const yr = d.slice(0, 4); if (yr !== lastYear && k > 0) { const t = svgEl("text", { x: x(k), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: "var(--text-3)" }); t.textContent = yr; svg.append(t); } lastYear = yr; });
-  const ends = EQ.series.map((s, j) => ({ j, y: y(s.v[n - 1]) })).sort((a, b) => a.y - b.y);
+  EQ.dates.forEach((d, k) => { const yr = d.slice(0, 4); if (yr !== lastYear && k > 0 && (!narrow || +yr % 2 === 0)) { const t = svgEl("text", { x: x(k), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: "var(--text-3)" }); t.textContent = yr; svg.append(t); } lastYear = yr; });
+  const ends = EQ.series.map((s, j) => ({ j, y: y(s[key][n - 1]) })).sort((a, b) => a.y - b.y);
   for (let k = 1; k < ends.length; k++) if (ends[k].y - ends[k - 1].y < 15) ends[k].y = ends[k - 1].y + 15;
   EQ.series.forEach((s, j) => {
-    svg.append(svgEl("path", { d: s.v.map((v, k) => (k ? "L" : "M") + x(k).toFixed(1) + " " + y(v).toFixed(1)).join(""), fill: "none", stroke: COL[j], "stroke-width": 2, "stroke-linejoin": "round" }));
-    const t = svgEl("text", { x: W - m.r + 8, y: ends.find(e => e.j === j).y + 4, "font-size": 12, fill: "var(--text)" });
-    t.textContent = `${s.name}  ₹${s.v[n - 1].toFixed(2)}`; svg.append(t);
+    svg.append(svgEl("path", { d: s[key].map((v, k) => (k ? "L" : "M") + x(k).toFixed(1) + " " + y(v).toFixed(1)).join(""), fill: "none", stroke: COL[j], "stroke-width": key === "dd" ? 1.5 : 2, "stroke-linejoin": "round" }));
+    if (endLabels && !narrow) {
+      const t = svgEl("text", { x: W - m.r + 8, y: ends.find(e => e.j === j).y + 4, "font-size": 12, fill: "var(--text)" });
+      t.textContent = `${s.name}  ${fmt(s[key][n - 1])}`; svg.append(t);
+    }
   });
   const cross = svgEl("line", { y1: m.t, y2: H - m.b, stroke: "var(--text-3)", "stroke-dasharray": "3 3", visibility: "hidden" }); svg.append(cross);
   const dots = EQ.series.map((s, j) => { const c = svgEl("circle", { r: 4.5, fill: COL[j], stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" }); svg.append(c); return c; });
@@ -342,20 +522,87 @@ function drawEquity() {
     const box = svg.getBoundingClientRect(), px = (ev.clientX - box.left) / box.width * W;
     const k = Math.max(0, Math.min(n - 1, Math.round((px - m.l) / (W - m.l - m.r) * (n - 1))));
     cross.setAttribute("x1", x(k)); cross.setAttribute("x2", x(k)); cross.setAttribute("visibility", "visible");
-    dots.forEach((c, j) => { c.setAttribute("cx", x(k)); c.setAttribute("cy", y(EQ.series[j].v[k])); c.setAttribute("visibility", "visible"); });
-    const tip = $("eqTip"); tip.style.display = "block";
-    tip.innerHTML = `<b>${fdate(EQ.dates[k])}</b><br>` + EQ.series.map((s, j) => `<i style="background:${COL[j]}"></i>${esc(s.name)}: ₹${s.v[k].toFixed(2)}`).join("<br>");
+    dots.forEach((c, j) => { c.setAttribute("cx", x(k)); c.setAttribute("cy", y(EQ.series[j][key][k])); c.setAttribute("visibility", "visible"); });
+    const tip = $(tipId); tip.style.display = "block";
+    tip.innerHTML = `<b>${fdate(EQ.dates[k])}</b><br>` + EQ.series.map((s, j) => `<i style="background:${COL[j]}"></i>${esc(s.name)}: ${fmt(s[key][k])}`).join("<br>");
     const left = ev.clientX - box.left + 14;
-    tip.style.left = (left + 200 > box.width ? left - 220 : left) + "px"; tip.style.top = "12px";
+    tip.style.left = Math.max(0, left + 210 > box.width ? left - 230 : left) + "px"; tip.style.top = "12px";
   };
-  svg.onmouseleave = () => { $("eqTip").style.display = "none"; cross.setAttribute("visibility", "hidden"); dots.forEach(c => c.setAttribute("visibility", "hidden")); };
+  svg.onmouseleave = () => { $(tipId).style.display = "none"; cross.setAttribute("visibility", "hidden"); dots.forEach(c => c.setAttribute("visibility", "hidden")); };
 }
-$("eqLegend").innerHTML = EQ.series.map((s, j) => `<span><i style="background:${COL[j]}"></i>${esc(s.name)}</span>`).join("");
+const rupee = (v, tick) => "₹" + v.toFixed(tick ? 1 : 2);
+function drawLines() {
+  lineChart("equity", "eqTip", "v", 340, rupee, 0.5, true);
+  lineChart("dd", "ddTip", "dd", 150, (v) => pct(v, 0), 0.1, false);
+  $("eqLegend").innerHTML = D.equity[uni].series.map((s, j) => `<span><i style="background:${COL[j]}"></i>${esc(s.name)}</span>`).join("");
+}
+
+// ---- row charts (HTML tracks: forest, bars, stacks) ---------------------------
+function scale(lo, hi) { const pad = (hi - lo) * 0.04; lo -= pad; hi += pad; return v => (v - lo) / (hi - lo) * 100; }
+function rowChart(target, items, build) {
+  const box = $(target); box.innerHTML = ""; box.className = "rowchart";
+  for (const it of items) {
+    const nm = el("div", "nm" + (it.name === "Buy&Hold" ? " bh" : ""), esc(it.name)); nm.title = it.name;
+    const tr = el("div", "track"), val = el("div", "val");
+    build(it, tr, val); const row = el("div", "rc-row"); row.append(nm, tr, val); box.append(row);
+  }
+}
+function drawForest() {
+  const F = D.forest[uni], pos = scale(Math.min(...F.map(r => r.lo)), Math.max(...F.map(r => r.hi)));
+  const bh = F.find(r => r.name === "Buy&Hold").s;
+  rowChart("forest", F, (r, tr, val) => {
+    tr.innerHTML = `<span class="ref" style="left:${pos(0)}%"></span><span class="ref bhline" style="left:${pos(bh)}%"></span>` +
+      `<span class="whisk" style="left:${pos(r.lo)}%;width:${pos(r.hi) - pos(r.lo)}%"></span><span class="dot" style="left:${pos(r.s)}%;background:${kindCol(r.kind)}"></span>`;
+    tr.title = `${r.name}: Sharpe ${sgn(r.s)}, 95% interval ${sgn(r.lo)} to ${sgn(r.hi)}`;
+    val.textContent = `${sgn(r.s)}  [${sgn(r.lo)}, ${sgn(r.hi)}]`;
+  });
+  const B = F.find(r => r.name === "Buy&Hold"), ag = F.filter(r => r.kind === "agents");
+  const apart = ag.filter(r => r.hi < B.lo || r.lo > B.hi).length, above = ag.filter(r => r.s > B.s).length;
+  $("forestNote").textContent = `${above} of ${ag.length} agent configurations have a higher Sharpe than Buy&Hold. ` +
+    (apart ? `${apart} have an interval that does not overlap Buy&Hold's.` : `Every agent interval overlaps Buy&Hold's own interval.`) +
+    ` These are each strategy's own intervals; the paired test against Buy&Hold is in the table below. A wide interval means small differences cannot be separated, not that the strategies are proven equal.`;
+}
+function drawCovid() {
+  const C = D.covid, pos = scale(Math.min(...C.rows.map(r => r.dd)), 0);
+  $("covidTitle").textContent = `Maximum drawdown inside the ${C.period.replace(/\s*\(.*/, "")} window (${C.days} trading days, 10 stocks)`;
+  rowChart("covid", [...C.rows].sort((a, b) => b.dd - a.dd), (r, tr, val) => {
+    const a = pos(r.dd), b = pos(0);
+    tr.innerHTML = `<span class="ref" style="left:${pos(0)}%"></span><span class="fill" style="left:${a}%;width:${Math.max(0.4, b - a)}%;background:${kindCol(r.kind)}"></span>`;
+    tr.title = `${r.name}: max drawdown ${pct(r.dd)}, total return over the window ${spct(r.ret, 1)}`;
+    val.textContent = `${pct(r.dd)}  (return ${spct(r.ret, 1)})`;
+  });
+}
+function drawDeletion() {
+  rowChart("deletion", D.deletion, (r, tr, val) => {
+    tr.style.height = "34px";
+    tr.innerHTML = `<span class="fill" style="top:3px;height:12px;left:0;width:${Math.max(0.4, r.top * 100)}%;background:var(--s1)"></span>` +
+      `<span class="fill" style="top:18px;height:12px;left:0;width:${Math.max(0.4, r.other * 100)}%;background:var(--text-3)"></span>`;
+    tr.title = `${r.name}: ${pct(r.top)} against ${pct(r.other)} (${r.n.toLocaleString()} decisions)`;
+    val.textContent = `${pct(r.top)} vs ${pct(r.other)}`;
+  });
+}
+function stack(tr, parts) {
+  let left = 0;
+  tr.innerHTML = parts.filter(p => p.v > 0).map(p => { const h = `<span class="seg" title="${esc(p.label)} ${pct(p.v)}" style="left:calc(${left * 100}% + 1px);width:calc(${p.v * 100}% - 2px);background:${p.c}"></span>`; left += p.v; return h; }).join("");
+}
+function drawDecisive() {
+  const order = [["regime", "var(--s1)"], ["fundamentals", "var(--s2)"], ["sentiment", "var(--s3)"], ["technical", "var(--text-3)"]];
+  rowChart("decisive", D.decisive, (r, tr, val) => {
+    stack(tr, order.map(([k, c]) => ({ label: k, v: r.shares[k] || 0, c })));
+    const top = order.map(([k]) => [k, r.shares[k] || 0]).sort((a, b) => b[1] - a[1])[0];
+    val.textContent = `${top[0]} ${pct(top[1], 0)}`;
+  });
+}
+function drawLabels() {
+  rowChart("labels", D.labels, (r, tr, val) => {
+    stack(tr, [{ label: "Good", v: r.good, c: "var(--pos)" }, { label: "Bad", v: r.bad, c: "var(--neg)" }, { label: "Unknown", v: r.unknown, c: "var(--neutral)" }]);
+    tr.title = `${r.name}: Good ${pct(r.good)}, Bad ${pct(r.bad)}, Unknown ${pct(r.unknown)} of ${r.n.toLocaleString()} headlines`;
+    val.textContent = `${pct(r.good, 0)} / ${pct(r.bad, 0)} / ${pct(r.unknown, 0)}`;
+  });
+}
 
 // ---- results table ------------------------------------------------------------
-let uni = "core";
 function drawTable() {
-  chips("uniChips", D.universes.map(u => u.label), k => D.universes[k].key === uni, k => { uni = D.universes[k].key; drawTable(); });
   const t = $("resTable");
   t.innerHTML = "<thead><tr><th>Strategy</th><th>Sharpe (net)</th><th>Sharpe (gross)</th><th>CAGR</th><th>Max drawdown</th><th>Turnover / yr</th><th>Invested</th><th>Holm p vs B&amp;H</th></tr></thead>";
   const body = el("tbody");
@@ -367,16 +614,76 @@ function drawTable() {
   }
   t.append(body);
 }
+function drawResults() {
+  chips("uniChips", D.universes.map(u => u.label), k => D.universes[k].key === uni, k => { uni = D.universes[k].key; drawResults(); });
+  drawLines(); drawForest(); drawTable();
+}
 
-// ---- findings -------------------------------------------------------------------
+// ---- static blocks ------------------------------------------------------------
 for (const f of D.findings) {
   const c = el("div", "card find");
   c.append(el("div", "verdictline", esc(f.tag)), el("h3", null, esc(f.title)), el("p", null, esc(f.text)));
   $("findings").append(c);
 }
+for (const s of D.stress) {
+  const c = el("div", "card find");
+  c.append(el("div", "vtag", esc(s.verdict)), el("h3", null, esc(s.scenario)), el("p", null, esc(s.detail)));
+  $("stressCards").append(c);
+}
+$("archTable").innerHTML = "<thead><tr><th>Architecture</th><th>Accuracy</th><th>± sd across seeds</th><th>p vs chance</th></tr></thead><tbody>" +
+  D.arch.map(r => `<tr><td>${esc(r.name)}</td><td>${(r.acc * 100).toFixed(2)}%</td><td>${(r.sd * 100).toFixed(2)}%</td><td>${r.p.toFixed(2)}</td></tr>`).join("") + "</tbody>";
 
-render(); drawEquity(); drawTable();
-let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { drawStrip(); drawEquity(); }, 120); });
+// ---- live pipeline --------------------------------------------------------------
+let liveK = 0;
+function drawLive() {
+  chips("liveChips", D.live.map(l => fdate(l.date)), k => k === liveK, k => { liveK = k; drawLive(); });
+  const L = D.live[liveK], m = L.model || {};
+  const buys = L.decisions.filter(d => d.a === "BUY"), gross = buys.reduce((a, d) => a + d.w, 0);
+  $("liveModel").textContent = `${buys.length} of ${L.decisions.length} stocks bought, ${pct(gross, 0)} of the book invested.` +
+    (m.architecture ? ` Technical model: ${m.architecture}, trained on data through ${m.trained_through}.` : "");
+  const box = $("liveRows"); box.innerHTML = "";
+  for (const d of L.decisions) {
+    const row = el("div", "live-row");
+    row.append(el("div", null, `<span style="white-space:nowrap"><span class="badge ${d.a}">${d.a}</span> <b style="margin-left:6px">${esc(d.sym)}</b></span>`),
+      el("div", null, `<span class="lk">Score</span>${sgn(d.s, 3)}`),
+      el("div", null, `<span class="lk">Weight</span>${pct(d.w)}`));
+    const det = el("details", null, `<summary>Why: ${esc(d.head.replace(/^(BUY|FLAT) \S+ /, "").replace(/^\((.*)\)\.?$/, "$1"))}</summary>` + d.notes.map(n => `<p><b>${esc(n.tag)}</b> ${esc(n.text)}</p>`).join(""));
+    row.append(det); box.append(row);
+  }
+}
+function drawPaper() {
+  const P = D.paper; if (!P) { $("paperCard").hidden = true; return; }
+  $("paperNote").textContent = `Snapshot generated ${P.generated}. Fills are simulated through a mock broker with the real cost model; this is not a track record.`;
+  const box = $("paper");
+  for (const s of P.sections) {
+    box.append(el("h3", null, esc(s.title))); box.lastChild.style.marginTop = "14px";
+    if (s.rows.length) {
+      const head = s.head ? "<thead><tr>" + s.head.map((h, k) => `<th${k ? "" : ' class="l"'}>${esc(h)}</th>`).join("") + "</tr></thead>" : "";
+      const sc = el("div", "scroll", `<table>${head}<tbody>` + s.rows.map(r => "<tr>" + r.map((c, k) => `<td${k ? "" : ' class="l"'}>${esc(c)}</td>`).join("") + "</tr>").join("") + "</tbody></table>");
+      box.append(sc);
+    }
+    if (s.bullets.length) box.append(el("ul", null, s.bullets.map(b => `<li style="color:var(--text-2);font-size:14px">${esc(b)}</li>`).join("")));
+  }
+}
+
+// ---- all tables -----------------------------------------------------------------
+const groups = [...new Set(D.tables.map(t => t.group))];
+let grp = groups[0];
+function drawTables(pick) {
+  chips("grpChips", groups, k => groups[k] === grp, k => { grp = groups[k]; drawTables(); });
+  const list = D.tables.map((t, k) => [t, k]).filter(([t]) => t.group === grp), sel = $("tblSel");
+  sel.innerHTML = ""; list.forEach(([t, k]) => { const o = el("option", null, esc(t.title)); o.value = k; sel.append(o); });
+  if (pick != null) sel.value = pick;
+  const T = D.tables[+sel.value];
+  $("tblNote").textContent = T.note; $("tblSrc").textContent = T.src + " · " + T.rows.length + " rows";
+  $("anyTable").innerHTML = "<thead><tr>" + T.cols.map((c, k) => `<th${T.text[k] ? ' class="l"' : ""}>${esc(c)}</th>`).join("") + "</tr></thead><tbody>" +
+    T.rows.map(r => "<tr>" + r.map((c, k) => `<td${T.text[k] ? ' class="l"' : ""}>${esc(c)}</td>`).join("") + "</tr>").join("") + "</tbody>";
+}
+$("tblSel").onchange = ev => drawTables(ev.target.value);
+
+drawResults(); drawCovid(); drawDeletion(); drawDecisive(); drawLabels(); drawLive(); drawPaper(); drawTables();
+loadExplorer(0);
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (X) drawStrip(); drawLines(); }, 120); });
 </script>
 </body>
 </html>
