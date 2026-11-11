@@ -266,6 +266,59 @@ def paper_report() -> dict | None:
     return {"generated": generated.group(1) if generated else "", "sections": sections}
 
 
+# ---- inputs for the in-browser engine --------------------------------------------
+
+LAB_SOURCE = "Tech+Sent+Regime+Fund"   # the one run that logs all four agents' opinions
+
+
+def lab_data() -> dict:
+    """Everything the browser engine needs to re-run the decide + backtest passes.
+
+    The agents' opinions are the recorded out-of-sample ones (the LSTM and the
+    LLM cannot run in a browser); the trader, the risk manager, the gross cap,
+    the no-trade band, the cost model and the performance metrics are
+    re-implemented in JavaScript and executed on these inputs. Rows are ordered
+    (date, symbol) and stored as flat arrays, one value per row.
+    """
+    from nse_agents.agents.regime import build_regime_table
+    from nse_agents.agents.risk import RiskLimits
+    from nse_agents.agents.trader import TraderConfig
+    from nse_agents.config import SETTINGS
+
+    frame = pd.read_csv(FINAL / "core" / f"decisions_{LAB_SOURCE}.csv", parse_dates=["date"])
+    vol = build_regime_table(SETTINGS.universe, SETTINGS.start, SETTINGS.end)[["symbol", "date", "vol_20"]]
+    frame = frame.merge(vol, on=["symbol", "date"], how="left").sort_values(["date", "symbol"]).reset_index(drop=True)
+    dates = sorted(frame["date"].unique())
+    symbols = sorted(frame["symbol"].unique())
+    assert len(frame) == len(dates) * len(symbols), "decision grid is not rectangular"
+
+    num = lambda col, nd: [None if pd.isna(v) else round(float(v), nd) for v in frame[col]]  # noqa: E731
+    agents = {}
+    for a in AGENTS:
+        gone = frame[f"{a}_abstained"].to_numpy(dtype=bool)
+        agents[a] = {"s": [None if g else round(float(v), 6) for v, g in zip(frame[f"{a}_stance"], gone)],
+                     "c": [None if g else round(float(v), 6) for v, g in zip(frame[f"{a}_conf"], gone)]}
+    costs, limits, trader = SETTINGS.costs, RiskLimits(), TraderConfig()
+    summary = pd.read_csv(FINAL / "core" / "summary.csv").set_index("strategy")
+    published = {name: {"sharpe": float(r["Sharpe(net,excess)"]), "gross": float(r["Sharpe(gross)"]), "cagr": float(r["CAGR"]),
+                        "dd": float(r["MaxDD"]), "to": float(r["Turnover/yr"]), "exp": float(r["Exposure"])}
+                 for name, r in summary.iterrows()}
+    # The report's own Buy&Hold track, so the benchmark here is the published one.
+    # It has no value on three sessions (NSE-holiday phantom bars, KNOWN_ISSUES / thesis section 6).
+    bh = pd.read_csv(FINAL / "core" / "daily_net_returns.csv", parse_dates=["date"]).set_index("date")["Buy&Hold"].reindex(dates)
+    return {
+        "bh": [None if pd.isna(v) else round(float(v), 8) for v in bh],
+        "dates": [pd.Timestamp(d).strftime("%Y-%m-%d") for d in dates], "symbols": symbols,
+        "ret": num("fwd_ret", 7), "vol": num("vol_20", 6), "agents": agents,
+        "cost": {"buy": costs.cost(1.0, "buy"), "sell": costs.cost(1.0, "sell"),
+                 "buyBps": costs.cost_bps("buy"), "sellBps": costs.cost_bps("sell")},
+        "defaults": {"cap": limits.max_weight_per_name, "gross": limits.max_gross_exposure, "volTarget": limits.target_annual_vol,
+                     "brakeAt": limits.drawdown_brake_at, "flatAt": limits.drawdown_flat_at, "minConf": limits.min_confidence,
+                     "buyThreshold": trader.buy_threshold, "rf": 0.06, "band": 0.05},
+        "published": published,
+    }
+
+
 # ---- page data -------------------------------------------------------------------
 
 def build() -> dict:
@@ -398,6 +451,9 @@ def main() -> int:
         index.append({"file": f"data/{name}", "config": config, "exp": exp,
                       "label": f"{config} · {len(payload['symbols'])} stocks", "n": n})
     data["explorerIndex"] = index
+
+    lab = json.dumps(lab_data(), ensure_ascii=False, separators=(",", ":"))
+    (out_dir / "data" / "lab.js").write_text(f"window.LAB_DATA={lab};\n")
 
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     (out_dir / "index.html").write_text(TEMPLATE.read_text().replace("/*__DATA__*/null", payload, 1))
