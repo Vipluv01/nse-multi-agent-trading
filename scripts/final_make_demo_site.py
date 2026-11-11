@@ -1,15 +1,20 @@
-"""Build the self-contained demo website for the final evaluation.
+"""Build the demo website for the final evaluation.
 
-One HTML file, no server and no network: every number is read from the result
-CSVs under results/final and embedded as JSON, so the page opens by
-double-click and shows exactly what the report shows.
+No server and no network: every number is read from the result files under
+results/ and embedded as JSON, so the page opens by double-click and shows
+exactly what the report shows. Nothing is recomputed or re-run here -- the
+site is a viewer over results that already exist, including the recorded
+live-pipeline signals and the paper-trading report, so an evaluator never has
+to run a script to see them.
 
-The decision explorer embeds real recorded decisions of one configuration
-(default: all four agents + conviction-gated debate) for two windows -- the
-most recent year and the 2020 COVID crash -- because the full per-decision dump
-is ~20 MB per configuration.
+Layout (results/final/demo/):
+  index.html            the page, with all summary data inline
+  data/explorer_N.js    recorded decisions for one configuration each, loaded
+                        on demand through a <script> tag (works on file://)
 
-Writes results/final/demo/index.html.
+The decision explorer embeds two windows per configuration -- the most recent
+sessions and the 2020 COVID crash -- because the full per-decision dump is
+~20 MB per configuration.
 
 Usage: .venv/bin/python scripts/final_make_demo_site.py
 """
@@ -18,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -34,6 +40,19 @@ AGENTS = ("technical", "sentiment", "regime", "fundamentals")
 BASELINES = {"Buy&Hold", "RSI(14)", "MACD", "KDJ+RSI", "MeanReversion"}
 SECTION = re.compile(r"\[(technical|sentiment|regime|fundamentals|debate|risk)(?: [^\]]*)?\]\s*")
 COVID = ("2020-02-03", "2020-06-30")
+IMPROVEMENTS = RESULTS / "improvements"
+
+# (experiment, configuration) pairs offered in the decision explorer; the first is the default.
+EXPLORER_CONFIGS = [
+    ("core", "All4+Debate(conviction)"),
+    ("core", "Tech+Regime"),
+    ("core", "Tech+Sent+Regime"),
+    ("core", "Regime+Fund+Band"),
+    ("core", "Tech+Regime+Fund+CostAware+Band"),
+    ("extended", "Tech+Regime+Fund"),
+]
+# The same three strategies are charted in both universes so a colour always means the same strategy.
+CHART_SERIES = ["Buy&Hold", "Tech+Regime", "Regime+Fund+Band"]
 
 
 def split_rationale(text: str) -> dict[str, str]:
@@ -63,16 +82,27 @@ def summary_rows(exp: str) -> list[dict]:
     return rows
 
 
-def equity(names: list[str]) -> dict:
-    daily = pd.read_csv(FINAL / "core" / "daily_net_returns.csv", parse_dates=["date"]).sort_values("date")
-    curves = (1.0 + daily[names].fillna(0.0)).cumprod()
+def equity(exp: str) -> dict:
+    """Growth of 1 and drawdown, every 5th session, for the charted strategies."""
+    daily = pd.read_csv(FINAL / exp / "daily_net_returns.csv", parse_dates=["date"]).sort_values("date")
+    curves = (1.0 + daily[CHART_SERIES].fillna(0.0)).cumprod()
+    draw = curves / curves.cummax() - 1.0
     keep = sorted(set(range(0, len(daily), 5)) | {len(daily) - 1})
     return {"dates": [d.strftime("%Y-%m-%d") for d in daily["date"].iloc[keep]],
-            "series": [{"name": n, "v": [round(float(v), 4) for v in curves[n].iloc[keep]]} for n in names]}
+            "series": [{"name": n, "v": [round(float(v), 4) for v in curves[n].iloc[keep]],
+                        "dd": [round(float(v), 4) for v in draw[n].iloc[keep]]} for n in CHART_SERIES]}
 
 
-def explorer(config: str, latest_days: int) -> dict:
-    frame = pd.read_csv(FINAL / "core" / f"decisions_{config}.csv")
+def forest(exp: str) -> list[dict]:
+    table = pd.read_csv(FINAL / exp / "sharpe_intervals.csv").sort_values("sharpe", ascending=False)
+    return [{"name": r.strategy, "kind": "baseline" if r.strategy in BASELINES else "agents",
+             "s": round(float(r.sharpe), 3), "lo": round(float(r.ci_low), 3), "hi": round(float(r.ci_high), 3)}
+            for r in table.itertuples(index=False)]
+
+
+def explorer(exp: str, config: str, latest_days: int) -> dict:
+    frame = pd.read_csv(FINAL / exp / f"decisions_{config}.csv")
+    agents = [a for a in AGENTS if f"{a}_stance" in frame.columns]
     dates = sorted(frame["date"].unique())
     latest = (dates[-latest_days], dates[-1])
     keep = frame[((frame["date"] >= latest[0]) & (frame["date"] <= latest[1]))
@@ -82,12 +112,11 @@ def explorer(config: str, latest_days: int) -> dict:
         out = []
         for r in part.itertuples(index=False):
             why = split_rationale(r.rationale)
-            agents = {}
-            for a in AGENTS:
-                abstained = bool(getattr(r, f"{a}_abstained"))
-                agents[a] = {"s": round(float(getattr(r, f"{a}_stance")), 3),
-                             "c": round(float(getattr(r, f"{a}_conf")), 3),
-                             "x": abstained, "t": why.get(a, "")}
+            opinions = {}
+            for a in agents:
+                opinions[a] = {"s": round(float(getattr(r, f"{a}_stance")), 3),
+                               "c": round(float(getattr(r, f"{a}_conf")), 3),
+                               "x": bool(getattr(r, f"{a}_abstained")), "t": why.get(a, "")}
             debate = why.get("debate", "") if bool(r.debated) else ""
             # Constrained-logit debates score the two cases without generating
             # prose, so the argument slot is literally None; drop the word.
@@ -95,19 +124,149 @@ def explorer(config: str, latest_days: int) -> dict:
             out.append({"d": r.date, "a": r.action, "s": round(float(r.score), 4),
                         "w": round(float(r.weight), 4), "db": bool(r.debated),
                         "f": None if pd.isna(r.fwd_ret) else round(float(r.fwd_ret), 5),
-                        "ag": agents, "dt": debate,
+                        "ag": opinions, "dt": debate,
                         "rk": "" if pd.isna(r.risk_notes) else str(r.risk_notes)})
         rows[symbol] = out
     return {
-        "config": config, "symbols": sorted(rows), "rows": rows,
-        "windows": [{"label": f"Latest year (to {latest[1]})", "start": latest[0], "end": latest[1]},
+        "config": config, "agents": agents, "symbols": sorted(rows), "rows": rows,
+        "windows": [{"label": f"Latest {latest_days} sessions (to {latest[1]})", "start": latest[0], "end": latest[1]},
                     {"label": "COVID crash, 2020", "start": COVID[0], "end": COVID[1]}],
-        "sub": (f"Real recorded decisions from the walk-forward backtest, configuration "
-                f"“{config}”. Pick a stock and a day to see what each agent said, "
-                f"how the trader combined them, and what the risk manager did. "
-                f"Arrow keys step through days."),
     }
 
+
+# ---- generic result tables -------------------------------------------------------
+
+PCT = ("return", "drawdown", "max_dd", "maxdd", "cagr", "vol", "hit_rate", "hitrate", "exposure", "flip_rate",
+       "share_", "agreement", "consistent", "provenance_correct", "precision", "base_rate", "capture",
+       "cost_drag", "costdrag", "within_tolerance", "buy_has_size", "alpha_annualized", "directional_accuracy")
+PVAL = re.compile(r"(^p$|^p_|_p$|pvalue|_p_holm$)")
+FOUR = ("accuracy", "auc", "mcc", "ic_spearman", "kappa", "r_squared")
+COUNT = re.compile(r"^(n|n_.*|days|seeds|periods|n_periods|universe_size|horizon|horizon_days)$", re.I)
+
+
+def fmt_cell(col: str, value) -> str:
+    key = col.lower()
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return "–"
+    if isinstance(value, bool) or str(value) in ("True", "False"):
+        return "Yes" if str(value) == "True" else "No"
+    if isinstance(value, str):
+        return value
+    v = float(value)
+    if COUNT.match(key) and v == int(v):
+        return f"{int(v):,}"
+    if PVAL.search(key):
+        return "<0.001" if v < 0.001 else f"{v:.3f}"
+    if "bps" in key:
+        return f"{v:.1f}"
+    if "turnover" in key:
+        return f"{v:.1f}×"
+    if any(t in key for t in PCT):
+        return f"{v * 100:.1f}%".replace("-", "−")
+    if any(t in key for t in FOUR):
+        return f"{v:.4f}".replace("-", "−")
+    if v != 0 and abs(v) < 0.001:
+        return f"{v:.1e}".replace("-", "−")
+    if v == int(v) and abs(v) < 1e6:
+        return f"{int(v):,}".replace("-", "−")
+    return f"{v:.3f}".replace("-", "−")
+
+
+def table(path: Path, group: str, title: str, note: str, drop: tuple[str, ...] = (), rename: dict | None = None) -> dict:
+    frame = pd.read_csv(path)
+    frame = frame[[c for c in frame.columns if c not in drop]]
+    rename = rename or {}
+    cols = [rename.get(c, c.replace("_", " ")) for c in frame.columns]
+    rows = [[fmt_cell(c, v) for c, v in zip(frame.columns, r)] for r in frame.itertuples(index=False, name=None)]
+    text = [not pd.api.types.is_numeric_dtype(frame[c]) for c in frame.columns]
+    return {"group": group, "title": title, "note": note, "cols": cols, "rows": rows, "text": [bool(t) for t in text],
+            "src": str(path.relative_to(RESULTS.parent))}
+
+
+def all_tables() -> list[dict]:
+    e, x, i, t = FINAL / "explainability", FINAL / "extended", IMPROVEMENTS, RESULTS / "technical"
+    c = FINAL / "core"
+    P, T, S, E, R = "Performance", "Technical model", "Sentiment and LLM", "Explainability", "Robustness"
+    return [
+        table(c / "summary.csv", P, "Core ablation, full metrics (10 stocks)", "Every strategy on the same 19,110 decisions, same execution and cost model."),
+        table(x / "summary.csv", P, "Extended universe, full metrics (30 stocks)", "Technical agent re-trained on 30 names; no news corpus exists for the 20 added names."),
+        table(c / "sharpe_intervals.csv", P, "Net Sharpe with bootstrap intervals and Deflated Sharpe (core)", "Stationary block bootstrap, 95% interval. The Deflated Sharpe accounts for the number of strategies tried."),
+        table(x / "sharpe_intervals.csv", P, "Net Sharpe with bootstrap intervals and Deflated Sharpe (extended)", "Same method on the 30-stock universe."),
+        table(c / "vs_buyhold.csv", P, "Paired difference against Buy&Hold (core)", "Sharpe difference with a paired block bootstrap; p values Holm-corrected across all configurations."),
+        table(x / "vs_buyhold.csv", P, "Paired difference against Buy&Hold (extended)", "Same test on the 30-stock universe."),
+        table(c / "incremental.csv", P, "Incremental value of each component (core)", "Each configuration against the one it extends."),
+        table(x / "incremental.csv", P, "Incremental value of each component (extended)", "Each configuration against the one it extends."),
+        table(c / "subperiods.csv", R, "Stress windows by calendar period (core)", "Return, drawdown and volatility inside the COVID crash and the 2022 rate-hike drawdown."),
+        table(x / "subperiods.csv", R, "Stress windows by calendar period (extended)", "Same windows on the 30-stock universe."),
+        table(i / "regime_breakdown.csv", R, "Performance by market regime (mid-semester study)", "Days split into bull, choppy and crash regimes by the Nifty's trailing return."),
+        table(i / "cost_sensitivity.csv", R, "Cost sensitivity: delivery against intraday charges (mid-semester study)", "The same strategies re-priced under the cheaper intraday cost schedule."),
+        table(i / "risk_attribution.csv", R, "Risk attribution against three benchmarks (mid-semester study)", "Beta, Treynor, information ratio and capture ratios against Nifty 50, the equal-weight universe and Nifty Next 50."),
+        table(i / "factor_regression.csv", R, "Two-factor regression: market and momentum (mid-semester study)", "Annualised alpha and factor loadings. Buy&Hold's alpha is an equal-weight against cap-weight artefact, not skill."),
+        table(i / "power_summary.csv", R, "Statistical power of the test", "Smallest Sharpe difference the bootstrap test detects with 80% and 50% power over this window."),
+        table(i / "hyperparam_horizon_cost.csv", R, "Pre-registered sensitivity: horizon and cost threshold", "A '+'-shaped grid fixed in advance, not a full search."),
+        table(i / "hyperparam_conviction_floor.csv", R, "Pre-registered sensitivity: conviction floor", "Net Sharpe as the trader's minimum conviction changes."),
+        table(i / "stress_test_verdicts.csv", R, "Synthetic stress tests: verdicts", "Four synthetic shocks laid on real recent prices, each compared against a matched zero-shock control."),
+        table(t / "architecture_summary.csv", T, "Architecture ablation (10 stocks, 3 seeds each)", "Peephole on/off × attention on/off. No variant is distinguishable from a coin flip."),
+        table(t / "classification_per_run.csv", T, "Classification metrics for every training run", "One row per architecture and seed."),
+        table(i / "gbm_variants.csv", T, "Gradient-boosting variants", "A non-neural baseline on narrow and wide universes."),
+        table(i / "horizon_label_variants.csv", T, "Horizon and label variants", "The technical model re-trained with different prediction horizons and label definitions."),
+        table(FINAL / "llm_comparison_labels.csv", S, "Label distributions: Qwen2.5-1.5B against 3B", "Share of Good / Bad / Unknown labels. Both models scored the identical matched sample."),
+        table(FINAL / "llm_comparison.csv", S, "Next-day predictability on matched headlines", "Information coefficient, tercile spread and hit rate by model and subset. 'sentiment' is the raw score."),
+        table(FINAL / "earnings_study.csv", S, "Earnings study, full corpus and matched sample", "Predictability of daily sentiment on earnings sessions against other sessions, at 1 and 5 days."),
+        table(FINAL / "earnings_attention.csv", S, "Do earnings days move more?", "Mean absolute next-day move on earnings sessions against other news days."),
+        table(i / "sentiment_variants.csv", S, "Sentiment signal variants (mid-semester study)", "Debiasing and aggregation variants of the daily sentiment score."),
+        table(e / "audit_integrity.csv", E, "Audit-trail integrity for every decision log", "Share of decisions whose stated action, score and stances equal the logged values, and whose score reconstructs."),
+        table(e / "deletion_faithfulness.csv", E, "Deletion faithfulness", "How often the decision flips when the top-attributed agent is removed, against another agent.", drop=("decisive_agent_share",)),
+        table(e / "decision_accuracy.csv", E, "Decision accuracy", "Buy precision against the base rate, directional accuracy and information coefficient of the final score."),
+        table(e / "accuracy_explainability.csv", E, "Accuracy against explainability rubric", "Five binary, checkable explainability criteria (E1 to E5) next to directional accuracy."),
+    ]
+
+
+# ---- recorded live pipeline ------------------------------------------------------
+
+BRACKET = re.compile(r"\[([a-z]+)([^\]]*)\]\s*")
+
+
+def live_signals() -> list[dict]:
+    out = []
+    for path in sorted((RESULTS / "paper_trading").glob("signal_*.json"), reverse=True):
+        raw = json.loads(path.read_text())
+        decisions = []
+        for d in raw["decisions"]:
+            parts = BRACKET.split(d["rationale"])
+            notes = [{"tag": (name + extra).strip(), "text": body.strip()}
+                     for name, extra, body in zip(parts[1::3], parts[2::3], parts[3::3])]
+            decisions.append({"sym": d["symbol"], "a": d["action"], "s": round(float(d["score"]), 4),
+                              "w": round(float(d["size"]), 4), "head": parts[0].strip(), "notes": notes})
+        decisions.sort(key=lambda r: (-r["w"], -r["s"]))
+        out.append({"date": raw["as_of"], "model": raw.get("model", {}), "decisions": decisions})
+    return out
+
+
+def paper_report() -> dict | None:
+    """Parse the committed paper-trading report (markdown) into sections of tables."""
+    path = RESULTS / "paper_trading" / "DAILY_REPORT.md"
+    if not path.exists():
+        return None
+    text = path.read_text()
+    generated = re.search(r"_Generated ([0-9-]+ [0-9:]+)", text)
+    clean = lambda s: re.sub(r"[*_`]", "", s).strip()  # noqa: E731
+    sections = []
+    for block in re.split(r"^## ", text, flags=re.M)[1:]:
+        title, _, body = block.partition("\n")
+        rows = [[clean(c) for c in line.strip().strip("|").split("|")]
+                for line in body.splitlines() if line.strip().startswith("|")]
+        rows = [r for r in rows if not all(re.fullmatch(r":?-+:?", c) for c in r)]
+        bullets = [clean(line[2:]) for line in body.splitlines() if line.startswith("- ")]
+        if rows:
+            head = rows[0] if any(rows[0]) else None
+            sections.append({"title": title.strip(), "head": head, "rows": rows[1:], "bullets": bullets})
+        elif bullets:
+            sections.append({"title": title.strip(), "head": None, "rows": [], "bullets": bullets})
+    return {"generated": generated.group(1) if generated else "", "sections": sections}
+
+
+# ---- page data -------------------------------------------------------------------
 
 def build() -> dict:
     core, ext = summary_rows("core"), summary_rows("extended")
@@ -129,11 +288,16 @@ def build() -> dict:
     dele = pd.read_csv(FINAL / "explainability" / "deletion_faithfulness.csv")
     final_a, mid_a = audit[audit["run"] != "mid-sem"], audit[audit["run"] == "mid-sem"]
     final_d = dele[dele["run"] != "mid-sem"]
+    core_d = dele[dele["run"] == "final-core"]
     acc = pd.read_csv(FINAL / "explainability" / "accuracy_explainability.csv").set_index("model")
-    gate = meta_c["debate_escalation_rate"]["Full+Debate(conviction)"]
+    arch = pd.read_csv(RESULTS / "technical" / "architecture_summary.csv")
+    gates = meta_c["debate_escalation_rate"]
     mid = pd.read_csv(RESULTS / "agents" / "summary.csv").set_index("strategy")
     mid_debate = float(mid.loc["Full+Debate", "Sharpe(net,excess)"])
     n_matched = int(labels.loc["Qwen2.5-3B (matched)", "n"])
+    sub = pd.read_csv(FINAL / "core" / "subperiods.csv")
+    covid = sub[sub["period"].str.startswith("COVID")].sort_values("total_return")
+    verdicts = pd.read_csv(IMPROVEMENTS / "stress_test_verdicts.csv")
 
     f2 = lambda v: f"{v:.2f}"  # noqa: E731
     pc = lambda v: f"{abs(v) * 100:.1f}%"  # noqa: E731
@@ -157,9 +321,11 @@ def build() -> dict:
                  f"{f2(by['Regime+Fund']['sharpe'])} to {f2(by['Regime+Fund+Band']['sharpe'])}. The cost-aware edge gate is too strict: it leaves the book "
                  f"{100 - by['Tech+Regime+Fund+CostAware+Band']['exp'] * 100:.0f}% in cash."},
         {"tag": "Same outcome, far fewer LLM calls", "title": "Conviction-gated debate",
-         "text": f"The mid-semester gate sent 97.4% of decisions to debate. The conviction gate sends {gate * 100:.1f}%, "
+         "text": f"The mid-semester gate sent 97.4% of decisions to debate. The conviction gate sends {gates['Full+Debate(conviction)'] * 100:.1f}% "
+                 f"(without the fundamentals agent; {gates['All4+Debate(conviction)'] * 100:.1f}% with it), "
                  f"and the net Sharpe barely moves ({f2(mid_debate)} to {f2(by['Full+Debate(conviction)']['sharpe'])})."},
     ]
+    decisive = [{"name": r.config, "shares": json.loads(r.decisive_agent_share)} for r in core_d.itertuples(index=False)]
     return {
         "byline": "Vipluv (22MF3IM22) · Department of Industrial and Systems Engineering · Supervisor: Prof. S. P. Sarmah",
         "headline": (f"<b>The headline result is negative, and that is the contribution.</b> "
@@ -181,31 +347,62 @@ def build() -> dict:
              "n": f"Mid-semester runs: {mid_a['provenance_correct'].max() * 100:.0f}% (a bug this audit caught and fixed)"},
         ],
         "resultsSub": (f"Every strategy trades the same stocks on the same days under the same cost model (about 32 bps round trip). "
-                       f"Core study: {len(meta_c['symbols'])} stocks, {meta_c['first']} to {meta_c['last']}."),
+                       f"Core study: {len(meta_c['symbols'])} stocks, {meta_c['first']} to {meta_c['last']}. "
+                       f"Extended study: {len(meta_e['symbols'])} stocks, to {meta_e['last']}."),
         "universes": [{"key": "core", "label": f"{len(meta_c['symbols'])} stocks (core)"},
                       {"key": "extended", "label": f"{len(meta_e['symbols'])} stocks (extended)"}],
         "summary": {"core": core, "extended": ext},
-        "footer": "Generated by scripts/final_make_demo_site.py from the result files in results/final. Research demonstration only; not investment advice.",
+        "equity": {"core": equity("core"), "extended": equity("extended")},
+        "forest": {"core": forest("core"), "extended": forest("extended")},
+        "covid": {"period": covid["period"].iloc[0], "days": int(covid["days"].iloc[0]),
+                  "rows": [{"name": r.strategy, "kind": "baseline" if r.strategy in BASELINES else "agents",
+                            "ret": round(float(r.total_return), 4), "dd": round(float(r.max_drawdown), 4)}
+                           for r in covid.itertuples(index=False)]},
+        "stress": [{"scenario": r.scenario, "verdict": r.verdict, "detail": r.detail} for r in verdicts.itertuples(index=False)],
+        "arch": [{"name": r.architecture, "acc": round(float(r.accuracy_mean), 4), "sd": round(float(r.accuracy_std), 4),
+                  "p": round(float(r.p_vs_chance), 2)} for r in arch.itertuples(index=False)],
+        "labels": [{"name": name, "n": int(r["n"]), "good": round(float(r["share_good"]), 4), "bad": round(float(r["share_bad"]), 4),
+                    "unknown": round(float(r["share_unknown"]), 4), "ratio": round(float(r["good_to_bad_ratio"]), 2)}
+                   for name, r in labels.iterrows()],
+        "deletion": [{"name": r.config, "top": round(float(r.flip_rate_delete_top), 4),
+                      "other": round(float(r.flip_rate_delete_random_other), 4), "n": int(r.n_tested)}
+                     for r in core_d.sort_values("flip_rate_delete_top", ascending=False).itertuples(index=False)],
+        "decisive": decisive,
+        "live": live_signals(),
+        "paper": paper_report(),
+        "tables": all_tables(),
+        "footer": "Generated by scripts/final_make_demo_site.py from the result files in results/. Research demonstration only; not investment advice.",
         "findings": findings,
     }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="All4+Debate(conviction)")
-    ap.add_argument("--latest-days", type=int, default=250)
+    ap.add_argument("--latest-days", type=int, default=120)
     args = ap.parse_args()
 
+    out_dir = FINAL / "demo"
+    (out_dir / "data").mkdir(parents=True, exist_ok=True)
+    for stale in (out_dir / "data").glob("explorer_*.js"):
+        stale.unlink()
+
     data = build()
-    data["equity"] = equity(["Buy&Hold", "Tech+Regime", args.config])
-    data["explorer"] = explorer(args.config, args.latest_days)
+    index, total = [], 0
+    for k, (exp, config) in enumerate(EXPLORER_CONFIGS):
+        payload = explorer(exp, config, args.latest_days)
+        n = sum(len(v) for v in payload["rows"].values())
+        total += n
+        name = f"explorer_{k}.js"
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        (out_dir / "data" / name).write_text(f"window.EXPLORER_DATA=window.EXPLORER_DATA||{{}};window.EXPLORER_DATA[{k}]={body};\n")
+        index.append({"file": f"data/{name}", "config": config, "exp": exp,
+                      "label": f"{config} · {len(payload['symbols'])} stocks", "n": n})
+    data["explorerIndex"] = index
+
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    html = TEMPLATE.read_text().replace("/*__DATA__*/null", payload, 1)
-    out = FINAL / "demo" / "index.html"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(html)
-    n = sum(len(v) for v in data["explorer"]["rows"].values())
-    print(f"wrote {out} ({out.stat().st_size / 1e6:.1f} MB, {n:,} decisions embedded)")
+    (out_dir / "index.html").write_text(TEMPLATE.read_text().replace("/*__DATA__*/null", payload, 1))
+    size = sum(p.stat().st_size for p in out_dir.rglob("*") if p.is_file()) / 1e6
+    print(f"wrote {out_dir} ({size:.1f} MB, {total:,} decisions in {len(index)} configurations, {len(data['tables'])} tables)")
     return 0
 
 
