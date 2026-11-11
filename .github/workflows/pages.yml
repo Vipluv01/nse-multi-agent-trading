@@ -2,7 +2,7 @@ name: Deploy demo site
 
 # Publishes the self-contained demo page plus the two PDFs it links to.
 # Layout mirrors results/final/ so the page's relative "../*.pdf" links resolve:
-#   /demo/index.html, /MTP_Final_Report.pdf, /MTP_Final_Presentation.pdf, /MTP_Short_Report.pdf
+#   /demo/index.html (+ /demo/data/*.js), /MTP_Final_Report.pdf, /MTP_Final_Presentation.pdf, /MTP_Short_Report.pdf
 
 on:
   push:
@@ -34,8 +34,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Assemble site
         run: |
-          mkdir -p _site/demo
-          cp results/final/demo/index.html _site/demo/index.html
+          mkdir -p _site
+          cp -r results/final/demo _site/demo
           cp results/final/MTP_Final_Report.pdf results/final/MTP_Final_Presentation.pdf results/final/MTP_Short_Report.pdf _site/
           printf '%s\n' '<!doctype html><meta charset="utf-8"><title>MTP demo</title>' \
             '<meta http-equiv="refresh" content="0; url=demo/">' \
