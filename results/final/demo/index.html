@@ -141,6 +141,21 @@ td.l, th.l { text-align: left; white-space: normal; min-width: 130px; }
   .live-row { grid-template-columns: 1fr 1fr 1fr; }
   .live-row > :last-child { grid-column: 1 / -1; }
 }
+.labgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 12px; margin: 0; min-width: 0; }
+legend { font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; padding: 0 6px; }
+.checks { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.checks label { display: flex; gap: 8px; align-items: baseline; cursor: pointer; }
+.sl { display: grid; grid-template-columns: minmax(100px, 150px) 1fr 112px; gap: 10px; align-items: center; font-size: 13.5px; padding: 3px 0; }
+.sl output { font-variant-numeric: tabular-nums; text-align: right; color: var(--text-2); white-space: nowrap; }
+.sl input[type=range] { width: 100%; accent-color: var(--s1); }
+input[type=checkbox] { accent-color: var(--s1); }
+button.primary { background: var(--s1); border-color: var(--s1); color: #fff; font-weight: 650; padding: 7px 16px; }
+button.primary:hover { filter: brightness(1.08); border-color: var(--s1); }
+.sbrow { display: grid; grid-template-columns: 96px 1fr 1fr 74px; gap: 8px; align-items: center; font-size: 13px; padding: 4px 0; }
+.sbrow input[type=range] { width: 100%; accent-color: var(--s1); }
+.sbrow small { color: var(--text-3); display: block; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .labgrid { grid-template-columns: 1fr; } .sl { grid-template-columns: 1fr 112px; } .sl > span { grid-column: 1 / -1; } .sbrow { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 760px) {
   h1 { font-size: 24px; }
   .tiles, .grid2 { grid-template-columns: 1fr 1fr; }
@@ -152,7 +167,7 @@ td.l, th.l { text-align: left; white-space: normal; min-width: 130px; }
 </head>
 <body>
 <nav class="top"><div class="in">
-  <a href="#top">Overview</a><a href="#how">How it works</a><a href="#decisions">Decision explorer</a><a href="#results">Results</a>
+  <a href="#top">Overview</a><a href="#how">How it works</a><a href="#lab"><b>Run it yourself</b></a><a href="#decisions">Decision explorer</a><a href="#results">Results</a>
   <a href="#stress">Stress periods</a><a href="#models">Models</a><a href="#november">November findings</a><a href="#explain">Explainability</a>
   <a href="#live">Live pipeline</a><a href="#tables">All result tables</a><a href="#limits">Limitations</a><a href="#downloads">Downloads</a>
 </div></nav>
@@ -182,6 +197,59 @@ td.l, th.l { text-align: left; white-space: normal; min-width: 130px; }
   <details><summary>Fundamentals agent (new for the final evaluation)</summary><p>Uses only annual statements, each treated as unknown until 61 days after the fiscal year end, one day past the SEBI LODR Regulation 33 deadline for audited results, so the agent can be late but never early. Net-profit growth, revenue growth, return on equity and change in ROE are z-scored across the universe on each decision date using only reports public on that date. Limitations: the source shows restated figures, and no valuation ratio is used.</p></details>
   <details><summary>Debate, trader and risk manager</summary><p>On contested days a bull and a bear researcher argue from the agents' findings; the LLM scores the strength of each case and the residual moves the score by a fixed 35% weight. The trader takes a confidence-weighted mean of stances with no learned stacker. The deterministic risk manager applies a confidence floor, 20% volatility targeting, a drawdown brake, a 20% per-name cap and a 100% gross cap; idle cash earns a 6% risk-free rate. Two opt-in cost-aware components were added for the final evaluation: an edge-against-cost gate and a 5% no-trade band (entries and exits are never banded).</p></details>
   <details><summary>Evaluation protocol and cost model</summary><p>Purged, embargoed walk-forward: 3-year training windows, 6-month test windows, a 10-day embargo, 16 folds. Positions are decided at the close of day t and executed at the open of t+1. Costs follow the 2026 delivery schedule: 0.1% STT each side, 0.015% stamp duty on buys, NSE and SEBI charges with GST, and 5 bps slippage, about 32 bps round trip. Sharpe ratios are in excess of 6%, with stationary block-bootstrap 95% intervals; differences against Buy&amp;Hold are Holm-corrected across all configurations, and the Deflated Sharpe Ratio accounts for the number of strategies tried.</p></details>
+</section>
+
+<section id="lab">
+  <h2>Run it yourself</h2>
+  <p class="sub">This runs in your browser, now. Choose which agents the trader listens to, change the costs and the risk limits, and press Run: the trader, the risk manager, the cost model and the backtest are re-executed on the 19,110 recorded out-of-sample agent opinions and the real next-day returns. The LSTM and the LLM cannot run in a browser, so their recorded outputs are the inputs; the debate step is not available here.</p>
+  <div class="card">
+    <div class="controls"><span class="lbl">Start from a published configuration</span><div class="chips" id="labPresets"></div></div>
+    <div class="labgrid">
+      <fieldset><legend>Agents the trader listens to</legend><div id="labAgents" class="checks"></div></fieldset>
+      <fieldset><legend>Risk manager</legend>
+        <div class="checks">
+          <label><input type="checkbox" id="labVolScale"> Volatility scaling</label>
+          <label><input type="checkbox" id="labBrake"> Drawdown brake (cut from −15%, flat at −30%)</label>
+          <label><input type="checkbox" id="labCostAware"> Cost-aware gate (trade only if edge clears cost)</label>
+        </div>
+      </fieldset>
+      <fieldset><legend>Parameters</legend><div id="labSliders"></div></fieldset>
+      <fieldset><legend>Universe and period</legend>
+        <div class="chips" id="labStocks" style="margin-bottom:10px"></div>
+        <label>From <select id="labFrom"></select></label> <label>to <select id="labTo"></select></label>
+      </fieldset>
+    </div>
+    <div class="controls" style="margin-top:14px">
+      <button id="labRun" class="primary">▶ Run backtest</button>
+      <button id="labReset">Reset to defaults</button>
+      <span class="sub" id="labStatus" style="margin:0;font-size:13px" aria-live="polite"></span>
+    </div>
+  </div>
+  <div class="tiles" id="labTiles" style="grid-template-columns:repeat(3,1fr)"></div>
+  <p class="note" id="labCheck" hidden></p>
+  <div class="card" style="margin-top:12px">
+    <h3>Growth of ₹1, net of costs: your run against Buy&amp;Hold on the same stocks and days</h3>
+    <div class="legend" id="labLegend"></div>
+    <div class="chart"><svg id="labEq" role="img" aria-label="Growth of one rupee for your configuration and Buy and Hold"></svg><div class="tip" id="labEqTip"></div></div>
+    <h3 style="margin-top:14px">Drawdown from the previous peak</h3>
+    <div class="chart"><svg id="labDd" class="small" role="img" aria-label="Drawdown for your configuration and Buy and Hold"></svg><div class="tip" id="labDdTip"></div></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h3>Inspect any decision from your run</h3>
+    <p class="sub" style="font-size:13px">Every one of the decisions just computed can be opened. Pick a stock and drag to a day.</p>
+    <div class="controls"><span class="lbl">Stock</span><select id="labTrSym"></select>
+      <span class="lbl" style="margin-left:10px">Day</span><input type="range" id="labTrDay" min="0" max="1" value="0" style="flex:1;min-width:160px"><b id="labTrDate" style="min-width:11ch;font-variant-numeric:tabular-nums"></b></div>
+    <div class="decision"><div class="verdict" id="labTrVerdict"></div><div><div id="labTrAgents"></div><div id="labTrNotes"></div></div></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h3>What-if: make up one decision</h3>
+    <p class="sub" style="font-size:13px">Set what each agent says and the market state, and watch the trader and the risk manager respond. It uses the parameters chosen above.</p>
+    <div class="labgrid">
+      <fieldset><legend>Agent opinions</legend><div id="sbAgents"></div></fieldset>
+      <fieldset><legend>Market state</legend><div id="sbState"></div>
+        <div class="verdict" id="sbVerdict" style="margin-top:10px"></div><div id="sbNotes"></div></fieldset>
+    </div>
+  </div>
 </section>
 
 <section id="decisions">
@@ -492,10 +560,10 @@ document.addEventListener("keydown", ev => {
 });
 
 // ---- line charts (growth of 1, drawdown) --------------------------------------
-const COL = ["var(--s1)", "var(--s2)", "var(--s3)"];
+const COL0 = ["var(--s1)", "var(--s2)", "var(--s3)"], COL = COL0;
 let uni = "core";
-function lineChart(svgId, tipId, key, H, fmt, tickStep, endLabels) {
-  const EQ = D.equity[uni], svg = $(svgId), W = svg.clientWidth || 900;
+function lineChart(svgId, tipId, key, H, fmt, tickStep, endLabels, data, colors) {
+  const EQ = data || D.equity[uni], COL = colors || COL0, svg = $(svgId), W = svg.clientWidth || 900;
   const narrow = W < 560, m = { l: 48, r: endLabels && !narrow ? 190 : 12, t: 10, b: 26 };
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = "";
   const n = EQ.dates.length, all = EQ.series.flatMap(s => s[key]);
@@ -681,9 +749,259 @@ function drawTables(pick) {
 }
 $("tblSel").onchange = ev => drawTables(ev.target.value);
 
+
+// ---- Run it yourself: trader + risk manager + backtest, executed in the browser ----
+// A line-for-line port of nse_agents/agents/{trader,risk,orchestrator}.py and
+// backtest/engine.py run_backtest(); the agents' recorded opinions are the inputs.
+const AGN = ["technical", "sentiment", "regime", "fundamentals"];
+const clip = (v, a, b) => Math.max(a, Math.min(b, v));
+function labCombine(ops) {                       // Trader.combine, equal agent weights, no debate
+  let num = 0, den = 0, cs = 0, n = 0;
+  for (const o of ops) { if (o.s == null) continue; num += o.c * o.s; den += o.c; cs += o.c; n++; }
+  if (!n) return [0, 0];
+  return [clip(den > 1e-9 ? num / den : 0, -1, 1), clip(cs / n, 0, 1)];
+}
+function labSize(score, conf, vol, dd, P, notes) {   // RiskManager.size
+  const L = window.LAB_DATA, say = t => { if (notes) notes.push(t); };
+  if (score <= 0) { say("score not positive; long-only book stays flat"); return 0; }
+  if (conf < P.minConf) { say(`aggregate confidence ${conf.toFixed(2)} below floor ${P.minConf.toFixed(2)}; no position`); return 0; }
+  const hasVol = vol != null && vol > 1e-6;
+  if (P.costAware && hasVol) {
+    const edge = score * conf * (vol / Math.sqrt(252)) * 1e4, rt = (L.cost.buyBps + L.cost.sellBps) * P.costMult;
+    if (edge < rt) { say(`estimated edge ${edge.toFixed(1)}bps does not clear round-trip cost ${rt.toFixed(1)}bps; no position`); return 0; }
+  }
+  let w = P.cap; say(`base weight ${w.toFixed(3)}`);
+  if (P.volScaling && hasVol) {
+    const sc = clip(P.volTarget / vol, 0.25, 1.5); w *= sc;
+    say(`vol scaling x${sc.toFixed(2)} (realised ${(vol * 100).toFixed(1)}% vs target ${(P.volTarget * 100).toFixed(1)}%)`);
+  }
+  if (P.brake) {
+    const D0 = L.defaults;
+    if (dd <= D0.flatAt) { say(`drawdown ${(dd * 100).toFixed(1)}% at or beyond flat limit; book halted`); return 0; }
+    if (dd < D0.brakeAt) {
+      const taper = clip((dd - D0.flatAt) / (D0.brakeAt - D0.flatAt), 0, 1); w *= taper;
+      say(`drawdown brake: ${(dd * 100).toFixed(1)}% drawdown, size x${taper.toFixed(2)}`);
+    }
+  }
+  return Math.max(Math.min(w, P.cap), 0);
+}
+function labMetrics(net, turn, expo, cost) {      // compute_performance
+  const N = net.length, rf = Math.pow(1.06, 1 / 252) - 1;
+  let eq = 1, peak = 1, mdd = 0, sum = 0, tsum = 0, esum = 0, csum = 0, n = 0;
+  const curve = new Array(N), dd = new Array(N);
+  for (let i = 0; i < N; i++) {                    // a null return (no benchmark value that day) is skipped, as in the report
+    if (net[i] != null) { eq *= 1 + net[i]; sum += net[i]; n++; }
+    peak = Math.max(peak, eq); curve[i] = eq; dd[i] = eq / peak - 1; mdd = Math.min(mdd, dd[i]); tsum += turn[i]; esum += expo[i]; csum += cost[i];
+  }
+  const years = n / 252, mean = sum / n; let ss = 0; for (let i = 0; i < N; i++) if (net[i] != null) ss += (net[i] - mean) ** 2;
+  const sd = n > 1 ? Math.sqrt(ss / (n - 1)) : 0;
+  return { n, sharpe: sd > 1e-12 ? (mean - rf) / sd * Math.sqrt(252) : 0, cagr: eq > 0 ? Math.pow(eq, 1 / years) - 1 : -1, dd: mdd,
+           vol: sd * Math.sqrt(252), to: tsum / years, exp: esum / N, drag: csum / N * 252, curve, ddSeries: dd };
+}
+function labRun(P) {
+  const L = window.LAB_DATA, S = L.symbols.length, rf = Math.pow(1.06, 1 / 252) - 1, G = L.defaults.gross;
+  const ub = L.cost.buy * P.costMult, us = L.cost.sell * P.costMult, n = P.d1 - P.d0 + 1;
+  const A = P.agents.map(a => L.agents[a]), K = P.stocks;
+  const W = new Float64Array(n * S), SC = new Float64Array(n * S), CF = new Float64Array(n * S), DD = new Float64Array(n);
+  const net = new Array(n), gross = new Array(n), turn = new Array(n), expo = new Array(n), cost = new Array(n);
+  const bNet = new Array(n), bTurn = new Array(n), bExpo = new Array(n), bCost = new Array(n);
+  const held = new Float64Array(S), prev = new Float64Array(S), w = new Float64Array(S);
+  const cap = arr => { let t = 0; for (const k of K) t += arr[k]; if (t > G && t > 0) { const s = G / t; for (const k of K) arr[k] *= s; } };
+  const bw = Math.min(1 / K.length, L.defaults.cap);
+  let eq = 1, peak = 1;
+  for (let t = 0; t < n; t++) {
+    const d = P.d0 + t, dd = eq / peak - 1; DD[t] = dd; w.fill(0);
+    for (const k of K) {
+      const i = d * S + k, ops = A.map(a => ({ s: a.s[i], c: a.c[i] }));
+      const [score, conf] = labCombine(ops);
+      SC[t * S + k] = score; CF[t * S + k] = conf;
+      w[k] = labSize(score, conf, L.vol[i], dd, P, null);
+    }
+    cap(w);                                                   // RiskManager.apply_gross_cap
+    if (P.band > 0) {                                         // Orchestrator._apply_band
+      for (const k of K) if (held[k] > 0 && w[k] > 0 && Math.abs(w[k] - held[k]) < P.band) w[k] = held[k];
+      cap(w);
+    }
+    let inv = 0, g = 0, bt = 0, st = 0, bg = 0;
+    for (const k of K) {
+      const r = L.ret[d * S + k] || 0; held[k] = w[k]; W[t * S + k] = w[k];
+      inv += w[k]; g += w[k] * r; bg += bw * r;
+      const dl = w[k] - prev[k]; if (dl > 0) bt += dl; else st -= dl; prev[k] = w[k];
+    }
+    const realised = g + Math.max(0, 1 - inv) * rf;           // what the risk state sees (pre-cost)
+    eq *= 1 + realised; peak = Math.max(peak, eq);
+    cost[t] = bt * ub + st * us; gross[t] = realised; net[t] = realised - cost[t]; turn[t] = bt + st; expo[t] = inv;
+    const bInv = bw * K.length; bTurn[t] = t ? 0 : bInv; bCost[t] = t ? 0 : bInv * ub; bExpo[t] = bInv;
+    bNet[t] = bg + Math.max(0, 1 - bInv) * rf - bCost[t];
+    if (K.length === S) bNet[t] = L.bh[d];                    // full universe: the report's own Buy&Hold track
+  }
+  return { P, n, W, SC, CF, DD, me: labMetrics(net, turn, expo, cost), gr: labMetrics(gross, turn, expo, cost), bh: labMetrics(bNet, bTurn, bExpo, bCost) };
+}
+
+// ---- lab UI ---------------------------------------------------------------------
+const LAB = { P: null, R: null, ready: false };
+const LAB_PRESETS = [
+  ["Tech-only", ["technical"], 0, false], ["Tech+Regime", ["technical", "regime"], 0, false],
+  ["Tech+Regime+Fund", ["technical", "regime", "fundamentals"], 0, false], ["Regime+Fund", ["regime", "fundamentals"], 0, false],
+  ["Regime+Fund+Band", ["regime", "fundamentals"], 1, false], ["Tech+Regime+Fund+CostAware+Band", ["technical", "regime", "fundamentals"], 1, true],
+  ["Tech+Sent+Regime", ["technical", "sentiment", "regime"], 0, false], ["Tech+Sent+Regime+Fund", AGN, 0, false], ["All4+CostAware+Band", AGN, 1, true],
+];
+const LAB_SL = [
+  ["costMult", "Transaction costs", 0, 3, 0.25, v => v === 0 ? "none" : `${v.toFixed(2)}× ≈ ${((window.LAB_DATA.cost.buyBps + window.LAB_DATA.cost.sellBps) * v).toFixed(0)} bps`],
+  ["band", "No-trade band", 0, 0.15, 0.01, v => v === 0 ? "off" : (v * 100).toFixed(0) + "% of book"],
+  ["cap", "Cap per stock", 0.05, 0.30, 0.01, v => (v * 100).toFixed(0) + "%"],
+  ["volTarget", "Volatility target", 0.10, 0.40, 0.01, v => (v * 100).toFixed(0) + "% a year"],
+  ["minConf", "Confidence floor", 0, 0.5, 0.01, v => v.toFixed(2)],
+];
+function labDefaults() {
+  const L = window.LAB_DATA, d = L.defaults;
+  return { agents: ["technical", "regime"], stocks: L.symbols.map((_, k) => k), d0: 0, d1: L.dates.length - 1, costMult: 1, band: 0, cap: d.cap,
+           volScaling: true, volTarget: d.volTarget, minConf: d.minConf, brake: true, costAware: false };
+}
+function labMatch(P) {      // which published configuration, if any, these settings reproduce
+  const L = window.LAB_DATA, d = L.defaults, near = (a, b) => Math.abs(a - b) < 1e-9;
+  if (P.stocks.length !== L.symbols.length || P.d0 !== 0 || P.d1 !== L.dates.length - 1 || !near(P.costMult, 1) || !near(P.cap, d.cap) ||
+      !P.volScaling || !near(P.volTarget, d.volTarget) || !near(P.minConf, d.minConf) || !P.brake) return null;
+  const key = AGN.filter(a => P.agents.includes(a)).join();
+  const hit = LAB_PRESETS.find(([, ag, b, ca]) => AGN.filter(a => ag.includes(a)).join() === key && near(P.band, b ? d.band : 0) && ca === P.costAware);
+  return hit ? hit[0] : null;
+}
+function labSyncControls() {
+  const P = LAB.P, L = window.LAB_DATA;
+  chips("labPresets", LAB_PRESETS.map(p => p[0]), k => labMatch(P) === LAB_PRESETS[k][0], k => {
+    const [, ag, b, ca] = LAB_PRESETS[k]; LAB.P = { ...labDefaults(), agents: [...ag], band: b ? L.defaults.band : 0, costAware: ca }; labSyncControls(); labGo();
+  });
+  document.querySelectorAll("#labAgents input").forEach(c => { c.checked = P.agents.includes(c.value); });
+  $("labVolScale").checked = P.volScaling; $("labBrake").checked = P.brake; $("labCostAware").checked = P.costAware;
+  for (const [key, , , , , fmt] of LAB_SL) { $("sl_" + key).value = P[key]; $("so_" + key).textContent = fmt(P[key]); }
+  chips("labStocks", L.symbols, k => P.stocks.includes(k), k => {
+    P.stocks = P.stocks.includes(k) ? P.stocks.filter(x => x !== k) : [...P.stocks, k].sort((a, b) => a - b);
+    if (!P.stocks.length) P.stocks = [k]; labSyncControls(); labStale();
+  });
+  $("labFrom").value = L.dates[P.d0].slice(0, 4); $("labTo").value = L.dates[P.d1].slice(0, 4);
+}
+function labStale() { $("labStatus").textContent = "Settings changed. Press Run backtest."; $("labRun").classList.add("primary"); }
+function labGo() {
+  const P = LAB.P, L = window.LAB_DATA;
+  if (!P.agents.length) { $("labStatus").textContent = "Pick at least one agent."; return; }
+  const t0 = performance.now(), R = labRun(P), ms = performance.now() - t0; LAB.R = R;
+  $("labStatus").textContent = `Ran ${(R.n * P.stocks.length).toLocaleString()} decisions over ${R.n.toLocaleString()} trading days in ${ms.toFixed(0)} ms.`;
+  const box = $("labTiles"); box.innerHTML = "";
+  const tile = (k, v, n) => { const c = el("div", "card tile"); c.append(el("div", "k", esc(k)), el("div", "v", esc(v)), el("div", "n", esc(n))); box.append(c); };
+  const m = R.me, b = R.bh;
+  tile("Net Sharpe", sgn(m.sharpe), `Buy&Hold ${sgn(b.sharpe)} · before costs ${sgn(R.gr.sharpe)}`);
+  tile("Return per year (CAGR)", spct(m.cagr, 1), `Buy&Hold ${spct(b.cagr, 1)}`);
+  tile("Max drawdown", pct(m.dd), `Buy&Hold ${pct(b.dd)}`);
+  tile("Turnover", m.to.toFixed(1) + "× a year", `Costs take ${pct(m.drag, 2)} a year`);
+  tile("Average invested", pct(m.exp, 0), "The rest is cash earning 6%");
+  tile("Verdict", m.sharpe > b.sharpe ? "Above Buy&Hold" : "Below Buy&Hold", m.sharpe > b.sharpe ? "On this window, by net Sharpe. Not a significance test, and a setting chosen after seeing results is in-sample." : "On this window, by net Sharpe.");
+  const name = labMatch(P), chk = $("labCheck");
+  if (name && L.published[name]) {
+    const pub = L.published[name];
+    chk.hidden = false;
+    chk.innerHTML = `<b>Check against the report.</b> These settings are the published configuration “${esc(name)}”. Report: Sharpe ${sgn(pub.sharpe)}, CAGR ${spct(pub.cagr, 1)}, max drawdown ${pct(pub.dd)}, turnover ${pub.to.toFixed(1)}×. ` +
+      `Computed here: Sharpe ${sgn(m.sharpe)}, CAGR ${spct(m.cagr, 1)}, max drawdown ${pct(m.dd)}, turnover ${m.to.toFixed(1)}×.`;
+  } else chk.hidden = true;
+  const step = Math.max(1, Math.floor(R.n / 400)), keep = []; for (let i = 0; i < R.n; i += step) keep.push(i); if (keep[keep.length - 1] !== R.n - 1) keep.push(R.n - 1);
+  LAB.chart = { dates: keep.map(i => L.dates[P.d0 + i]), series: [
+    { name: "Buy&Hold", v: keep.map(i => b.curve[i]), dd: keep.map(i => b.ddSeries[i]) },
+    { name: "Your configuration", v: keep.map(i => m.curve[i]), dd: keep.map(i => m.ddSeries[i]) }] };
+  labDrawCharts(); labTraceInit();
+  sbDraw();
+}
+const LABCOL = ["var(--s1)", "var(--text)"];
+function labDrawCharts() {
+  if (!LAB.chart) return;
+  const all = LAB.chart.series.flatMap(s => s.v), span = Math.max(...all) - Math.min(...all);
+  lineChart("labEq", "labEqTip", "v", 300, rupee, span > 2 ? 0.5 : span > 0.8 ? 0.25 : 0.1, true, LAB.chart, LABCOL);
+  lineChart("labDd", "labDdTip", "dd", 150, v => pct(v, 0), 0.1, false, LAB.chart, LABCOL);
+  $("labLegend").innerHTML = LAB.chart.series.map((s, j) => `<span><i style="background:${LABCOL[j]}"></i>${esc(s.name)}</span>`).join("");
+}
+function labTraceInit() {
+  const P = LAB.P, L = window.LAB_DATA, sel = $("labTrSym"), keepSym = sel.value;
+  sel.innerHTML = ""; P.stocks.forEach(k => { const o = el("option", null, esc(L.symbols[k])); o.value = k; sel.append(o); });
+  if ([...sel.options].some(o => o.value === keepSym)) sel.value = keepSym;
+  const r = $("labTrDay"); r.max = LAB.R.n - 1; if (+r.value > LAB.R.n - 1 || !LAB.traced) r.value = LAB.R.n - 1; LAB.traced = true;
+  labTrace();
+}
+function labTrace() {
+  const R = LAB.R, P = R.P, L = window.LAB_DATA, S = L.symbols.length, k = +$("labTrSym").value, t = +$("labTrDay").value, d = P.d0 + t, i = d * S + k;
+  $("labTrDate").textContent = fdate(L.dates[d]);
+  const score = R.SC[t * S + k], conf = R.CF[t * S + k], w = R.W[t * S + k], notes = [];
+  const own = labSize(score, conf, L.vol[i], R.DD[t], P, notes);
+  if (Math.abs(w - own) > 1e-9) notes.push(w < own ? `gross exposure over the 100% limit, or held weight kept by the no-trade band; final weight ${w.toFixed(3)}` : `held at ${w.toFixed(3)} (target ${own.toFixed(3)} within no-trade band)`);
+  const action = score > L.defaults.buyThreshold && w > 0 ? "BUY" : score > L.defaults.buyThreshold ? "HOLD" : "FLAT", r = L.ret[i];
+  labVerdict("labTrVerdict", action, L.symbols[k], score, conf, w, r);
+  const box = $("labTrAgents"); box.innerHTML = "";
+  for (const a of AGN) {
+    const on = P.agents.includes(a), s = L.agents[a].s[i], c = L.agents[a].c[i], row = el("div", "agent" + (!on || s == null ? " abst" : ""));
+    row.append(el("div", null, `<div class="name">${a[0].toUpperCase() + a.slice(1)}</div><div class="conf">${!on ? "switched off" : s == null ? "abstained" : "confidence " + c.toFixed(2)}</div>`));
+    row.append(el("div", null, !on || s == null ? `<div class="bar"></div><div class="bar-num">no stance</div>` : `${stanceBar(s)}<div class="bar-num">stance ${sgn(s)}</div>`));
+    row.append(el("div", "why", !on ? "Not consulted in this run." : s == null ? "No evidence that day, so it is left out of the average." : `Contributes ${sgn(c * s, 3)} to the confidence-weighted average.`));
+    box.append(row);
+  }
+  $("labTrNotes").innerHTML = `<div class="note risk"><b>Risk manager.</b> ${esc(notes.join("; "))}.</div>`;
+}
+function labVerdict(target, action, sym, score, conf, w, r) {
+  const v = $(target); v.innerHTML = "";
+  v.append(el("div", null, `<span class="badge ${action === "BUY" ? "BUY" : "FLAT"}">${action}</span> <b style="margin-left:6px">${esc(sym)}</b>`));
+  const kv = (a, b) => el("div", "kv", `<span>${a}</span><span>${b}</span>`);
+  v.append(el("div", null, "&nbsp;"), kv("Combined score", sgn(score, 3)), kv("Confidence", conf.toFixed(2)), kv("Position weight", pct(w)));
+  if (r !== undefined) v.append(kv("Next-day return", r == null ? "n/a" : spct(r)));
+}
+// what-if sandbox
+const SB = { ops: { technical: [0.02, 0.5, true], sentiment: [0.4, 0.4, true], regime: [0.5, 0.45, true], fundamentals: [-0.2, 0.5, true] }, vol: 0.25, dd: 0 };
+function sbBuild() {
+  const box = $("sbAgents");
+  for (const a of AGN) {
+    const row = el("div", "sbrow");
+    row.innerHTML = `<label><input type="checkbox" data-a="${a}" data-f="2" ${SB.ops[a][2] ? "checked" : ""}> ${a[0].toUpperCase() + a.slice(1)}</label>` +
+      `<div><input type="range" min="-1" max="1" step="0.01" value="${SB.ops[a][0]}" data-a="${a}" data-f="0" aria-label="${a} stance"><small>stance</small></div>` +
+      `<div><input type="range" min="0" max="1" step="0.01" value="${SB.ops[a][1]}" data-a="${a}" data-f="1" aria-label="${a} confidence"><small>confidence</small></div><output id="sbo_${a}"></output>`;
+    box.append(row);
+  }
+  box.oninput = ev => { const t = ev.target, a = t.dataset.a; if (!a) return; SB.ops[a][+t.dataset.f] = t.type === "checkbox" ? t.checked : +t.value; sbDraw(); };
+  $("sbState").innerHTML = `<div class="sl"><span>Stock volatility</span><input type="range" id="sbVol" min="0.05" max="0.8" step="0.01" value="${SB.vol}"><output id="sbVolO"></output></div>` +
+    `<div class="sl"><span>Book drawdown so far</span><input type="range" id="sbDd" min="-0.35" max="0" step="0.01" value="${SB.dd}"><output id="sbDdO"></output></div>`;
+  $("sbState").oninput = () => { SB.vol = +$("sbVol").value; SB.dd = +$("sbDd").value; sbDraw(); };
+}
+function sbDraw() {
+  if (!LAB.P) return;
+  for (const a of AGN) $("sbo_" + a).textContent = SB.ops[a][2] ? `${sgn(SB.ops[a][0])} @ ${SB.ops[a][1].toFixed(2)}` : "abstains";
+  $("sbVolO").textContent = (SB.vol * 100).toFixed(0) + "% a year"; $("sbDdO").textContent = pct(SB.dd, 0);
+  const [score, conf] = labCombine(AGN.map(a => SB.ops[a][2] ? { s: SB.ops[a][0], c: SB.ops[a][1] } : { s: null }));
+  const notes = [], w = labSize(score, conf, SB.vol, SB.dd, LAB.P, notes), thr = window.LAB_DATA.defaults.buyThreshold;
+  labVerdict("sbVerdict", score > thr && w > 0 ? "BUY" : score > thr ? "HOLD" : "FLAT", "one stock", score, conf, w);
+  $("sbNotes").innerHTML = `<div class="note risk"><b>Risk manager.</b> ${esc(notes.join("; "))}.</div>`;
+}
+function labInit() {
+  const L = window.LAB_DATA; LAB.P = labDefaults();
+  $("labAgents").innerHTML = AGN.map(a => `<label><input type="checkbox" value="${a}"> ${a[0].toUpperCase() + a.slice(1)}</label>`).join("");
+  $("labAgents").onchange = () => { LAB.P.agents = [...document.querySelectorAll("#labAgents input:checked")].map(c => c.value); labSyncControls(); labStale(); };
+  $("labSliders").innerHTML = LAB_SL.map(([key, label, lo, hi, step]) => `<div class="sl"><span>${label}</span><input type="range" id="sl_${key}" min="${lo}" max="${hi}" step="${step}" aria-label="${label}"><output id="so_${key}"></output></div>`).join("");
+  for (const [key] of LAB_SL) $("sl_" + key).oninput = ev => { LAB.P[key] = +ev.target.value; labSyncControls(); labStale(); sbDraw(); };
+  for (const [id, key] of [["labVolScale", "volScaling"], ["labBrake", "brake"], ["labCostAware", "costAware"]]) $(id).onchange = ev => { LAB.P[key] = ev.target.checked; labSyncControls(); labStale(); sbDraw(); };
+  const years = [...new Set(L.dates.map(d => d.slice(0, 4)))];
+  for (const id of ["labFrom", "labTo"]) { $(id).innerHTML = years.map(y => `<option>${y}</option>`).join(""); }
+  const pick = () => {
+    let a = $("labFrom").value, b = $("labTo").value; if (b < a) { b = a; $("labTo").value = b; }
+    LAB.P.d0 = L.dates.findIndex(d => d.slice(0, 4) === a); LAB.P.d1 = L.dates.length - 1 - [...L.dates].reverse().findIndex(d => d.slice(0, 4) === b); labSyncControls(); labStale();
+  };
+  $("labFrom").onchange = pick; $("labTo").onchange = pick;
+  $("labRun").onclick = labGo;
+  $("labReset").onclick = () => { LAB.P = labDefaults(); labSyncControls(); labGo(); };
+  $("labTrSym").onchange = labTrace; $("labTrDay").oninput = labTrace;
+  sbBuild(); labSyncControls(); labGo(); LAB.ready = true;
+}
+(function loadLab() {
+  const sc = document.createElement("script"); sc.src = "data/lab.js"; sc.onload = labInit;
+  sc.onerror = () => { $("labStatus").textContent = "Could not load data/lab.js. Keep the data folder next to index.html."; };
+  document.head.append(sc);
+})();
+
 drawResults(); drawCovid(); drawDeletion(); drawDecisive(); drawLabels(); drawLive(); drawPaper(); drawTables();
 loadExplorer(0);
-let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (X) drawStrip(); drawLines(); }, 120); });
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (X) drawStrip(); drawLines(); labDrawCharts(); }, 120); });
 </script>
 </body>
 </html>
