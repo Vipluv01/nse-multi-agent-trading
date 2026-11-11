@@ -23,7 +23,7 @@
 \vspace{0.4em}
 \textbf{Status at final evaluation}
 \begin{itemize}\small
-\item Mid-sem (done): PLSTM-TAL technical agent, LLM sentiment agent, regime agent, debate, risk manager, backtester.
+\item Mid-sem (done): technical agent (LSTM with temporal attention, PLSTM-TAL family), LLM sentiment agent, regime agent, debate, risk manager, backtester.
 \item November plan (done): larger LLM comparison $\cdot$ extended universe + period $\cdot$ earnings-day sentiment $\cdot$ point-in-time fundamentals agent $\cdot$ cost-aware sizing $\cdot$ full ablation re-run $\cdot$ explainability evaluation.
 \end{itemize}
 \end{frame}
@@ -32,7 +32,7 @@
 
 \centering\small\renewcommand{\arraystretch}{1.35}
 \begin{tabular}{ccccc}
-\fbox{\parbox{2.1cm}{\centering Technical\\PLSTM-TAL}} & \fbox{\parbox{2.1cm}{\centering Sentiment\\Qwen2.5 LLM}} & \fbox{\parbox{2.1cm}{\centering Regime\\trend, RS, VIX}} & \fbox{\parbox{2.4cm}{\centering \textbf{Fundamentals}\\(new, PIT)}} \\
+\fbox{\parbox{2.1cm}{\centering Technical\\LSTM-TAL}} & \fbox{\parbox{2.1cm}{\centering Sentiment\\Qwen2.5 LLM}} & \fbox{\parbox{2.1cm}{\centering Regime\\trend, RS, 52w range}} & \fbox{\parbox{2.4cm}{\centering \textbf{Fundamentals}\\(new, PIT)}} \\
 \multicolumn{4}{c}{$\Downarrow$ stance $\in[-1,1]$, confidence, rationale -- or \emph{abstain}} \\[0.2em]
 \multicolumn{4}{c}{\fbox{\parbox{9cm}{\centering Bull vs Bear LLM debate (only on high-conviction disagreement)}}} \\[0.2em]
 \multicolumn{4}{c}{$\Downarrow$} \\
@@ -50,8 +50,8 @@
 \item 19,110 out-of-sample decisions, 2018-12-07 -- 2026-08-27; decide at close $t$, trade at open $t+1$.
 \item Full Indian delivery costs: STT 0.1\% each side, stamp duty, NSE/SEBI + GST, 5 bps slippage $\approx$ \textbf{32 bps round trip}.
 \item Block-bootstrap CIs, Holm correction across all configurations, Deflated Sharpe Ratio.
-\item New components pre-registered: band 0.05, conviction floor 0.10 -- never tuned to the result.
-\item Mid-sem numbers reproduce \emph{exactly} in the final run -- new parts are opt-in.
+\item New components fixed in advance: band 0.05 (a quarter of the 20\% cap), conviction floor 0.10 -- not tuned to the result.
+\item Mid-sem agent configurations reproduce to within 0.004 Sharpe; Buy\&Hold 0.58 $\to$ 0.59 (price-snapshot correction) -- new parts are opt-in.
 \end{itemize}
 \end{frame}
 
@@ -77,19 +77,19 @@
 \item Earnings headlines alone: a Holm-significant \textbf{reversal} (IC $\approx -0.085$) -- good news underperforms next day. Fragile (gone after debiasing), $\approx$ cost-sized: not an edge.
 \end{itemize}
 \vspace{0.3em}{\tiny\begin{tabular}{llrrrr}\toprule
-\textbf{Model} & \textbf{Subset} & \textbf{n} & \textbf{IC} & \textbf{p} & \textbf{Hit rate} \\\midrule
-Qwen2.5-1.5B & all news days & 15190 & +0.00 & 0.84 & 50.1\% \\
-Qwen2.5-1.5B & earnings days & 1803 & -0.03 & 0.25 & 48.7\% \\
-Qwen2.5-1.5B & non-earnings days & 13387 & +0.01 & 0.53 & 50.2\% \\
-Qwen2.5-3B & all news days & 6480 & -0.03 & 0.04 & 49.2\% \\
-Qwen2.5-3B & earnings days & 1803 & -0.06 & 0.02 & 47.9\% \\
-Qwen2.5-3B & non-earnings days & 4677 & -0.01 & 0.45 & 49.7\% \\
-\bottomrule\end{tabular}}
+\textbf{Model} & \textbf{Subset} & \textbf{n} & \textbf{IC} & \textbf{Holm p} & \textbf{Hit} \\\midrule
+Qwen2.5-1.5B & all news & 15190 & +0.00 & 1.00 & 50.1\% \\
+Qwen2.5-1.5B & earnings & 1803 & -0.03 & 1.00 & 48.7\% \\
+Qwen2.5-1.5B & non-earnings & 13387 & +0.01 & 1.00 & 50.2\% \\
+Qwen2.5-3B & all news & 6480 & -0.03 & 0.82 & 49.2\% \\
+Qwen2.5-3B & earnings & 1803 & -0.06 & 0.36 & 47.9\% \\
+Qwen2.5-3B & non-earnings & 4677 & -0.01 & 1.00 & 49.7\% \\
+\bottomrule\end{tabular}}\\{\tiny Debiased tone, 1-day horizon. 1.5B rows: full corpus; 3B rows: matched sample.}
 \end{column}\begin{column}{0.5\textwidth}\centering\includegraphics[height=0.62\textheight,width=\linewidth,keepaspectratio]{earnings_ic.png}\end{column}\end{columns}
 \end{frame}
 
 \begin{frame}{New: larger LLM (Qwen2.5-3B) vs local 1.5B}
-\begin{columns}\begin{column}{0.48\textwidth}\begin{itemize}\small\item 1.5B model: Good:Bad = 3.31 -- a bullish prior, not bullish news.\item Same 10,240 headlines, same prompt: label agreement 60.3\%, $\kappa$ = 0.39.\item Qwen2.5-1.5B: IC -0.02 (p=0.13), hit rate 48.4\%.\item Qwen2.5-3B: IC -0.03 (p=0.04), hit rate 49.2\%.\item 3B is far less bullish and says Unknown twice as often -- but neither model gives a usable long-only signal.\end{itemize}\end{column}\begin{column}{0.52\textwidth}\centering\includegraphics[height=0.55\textheight,width=\linewidth,keepaspectratio]{llm_labels.png}\end{column}\end{columns}
+\begin{columns}\begin{column}{0.48\textwidth}\begin{itemize}\small\item 1.5B model, full corpus: Good:Bad = 3.31 -- a bullish prior, not bullish news.\item Same 10,240 headlines, same prompt: label agreement 60.3\%, $\kappa$ = 0.39.\item Qwen2.5-1.5B: IC -0.02 (Holm p=0.13), hit rate 48.4\%.\item Qwen2.5-3B: IC -0.03 (Holm p=0.09), hit rate 49.2\%.\item 3B is far less bullish and says Unknown twice as often -- but neither model gives a usable long-only signal.\end{itemize}\end{column}\begin{column}{0.52\textwidth}\centering\includegraphics[height=0.55\textheight,width=\linewidth,keepaspectratio]{llm_labels.png}\end{column}\end{columns}
 \end{frame}
 
 \begin{frame}{Full ablation, core universe (net of costs)}
@@ -123,8 +123,8 @@ MeanReversion & -1.41 & 0.68 & -79.6\% & 223x & 76\% & 0.00 \\
 \begin{itemize}
 \item \textbf{Fundamentals}: Tech+Regime 0.35 $\to$ 0.24. Annual rankings carry no daily information.
 \item \textbf{No-trade band}: turnover 24x $\to$ 16x/yr, Sharpe 0.21 $\to$ 0.28 -- helps by trading less.
-\item \textbf{Edge-vs-cost gate}: almost nothing clears 32 bps -- invested 7\% of the time. Low drawdown = cash.
-\item \textbf{Conviction-gated debate}: escalates 10.5\% of days (mid-sem raw gate: 97.4\%; 28.9\% with fundamentals); Sharpe 0.14 / 0.14 -- LLM cost down $\sim$9$\times$, no change in outcome.
+\item \textbf{Edge-vs-cost gate}: almost nothing clears 32 bps -- average exposure 7\% of capital. Low drawdown = cash.
+\item \textbf{Conviction-gated debate}: escalates 10.5\% of days (mid-sem raw gate: 97.4\%; 28.9\% with fundamentals); Sharpe 0.14 / 0.14 -- LLM calls down $\sim$9$\times$ without fundamentals, $\sim$3$\times$ with; no change in outcome.
 \end{itemize}
 \end{frame}
 
@@ -153,7 +153,7 @@ MeanReversion & -1.97 & -91.8\% & 311x \\
 
 \begin{columns}\begin{column}{0.5\textwidth}\small
 \begin{enumerate}
-\item \textbf{Provenance}: does the rationale name the model that made the number? Mid-sem logs: \textbf{0\%} -- all 19,110 credited PLSTM-TAL for LSTM-TAL. Caught by this audit; fixed: 100\%.
+\item \textbf{Provenance}: does the rationale name the model that made the number? Mid-sem logs: \textbf{0\%} -- all 19,110 rationales in each log credited PLSTM-TAL for LSTM-TAL. Caught by this audit; fixed: 100\%.
 \item \textbf{Integrity}: stated stances = logged stances: 100\%.
 \item \textbf{Reconstruction}: score recomputed from opinions: 100\%.
 \item \textbf{Deletion}: removing the top-attributed agent flips 37\%--71\% of decisions vs 0.0\%--3.4\% for another agent.
@@ -176,14 +176,14 @@ MeanReversion & -1.97 & -91.8\% & 311x \\
 \begin{frame}{Conclusions}
 
 \begin{itemize}
-\item Built and tested end-to-end: 5 agents, debate, risk manager, cost-aware backtester, live paper-trading demo, 350+ automated tests.
+\item Built and tested end-to-end: 4 agents, debate, risk manager, cost-aware backtester, live paper-trading demo, 350+ automated tests.
 \item \textbf{No configuration beats Buy-and-Hold} after real Indian costs -- on 10 names, on 30 names, and on fresh data.
 \item None of the November additions changes that; the no-trade band helps only by cutting turnover.
-\item What survives: a regime-aware risk overlay that roughly halves drawdowns, and an explanation layer that is measurably faithful -- and diagnosed its own bug.
+\item What survives: a regime-aware risk overlay that cuts maximum drawdown by a third to a half, and an explanation layer that is measurably faithful -- and diagnosed its own bug.
 \item Limitations: open 1.5B/3B models only, survivorship, restated fundamentals, power $\approx$ Sharpe 1.0.
 \item Next: event-time / intraday horizons, vendor PIT fundamentals, frontier LLM debate, market-neutral formulation.
 \end{itemize}
 \end{frame}
 
-\begin{frame}\centering\Large Thank you\\[0.6em]\normalsize Questions?\end{frame}
+\begin{frame}\centering\Large Thank you\\[0.6em]\normalsize Questions?\\[1.6em]\small Live demo (runs in the browser): \texttt{vipluv01.github.io/nse-multi-agent-trading}\\[0.3em]Code: \texttt{github.com/Vipluv01/nse-multi-agent-trading}\end{frame}
 \end{document}

@@ -191,7 +191,7 @@ button.primary:hover { filter: brightness(1.08); border-color: var(--s1); }
     <div class="step"><b>4 · Trader</b>Confidence-weighted average of the stances gives one score; positive means buy.</div>
     <div class="step"><b>5 · Risk manager</b>Deterministic rules: volatility targeting, 20% cap per stock, 100% cap on the book.</div>
   </div>
-  <details><summary>Technical agent</summary><p>Peephole LSTM cells and a temporal-attention layer, written from scratch in PyTorch, trained on 30-day sequences of price, volume and indicator features to predict the probability that the stock rises from the next open to the following open. A 2×2 ablation (peephole on/off × attention on/off) with three seeds each isolates the architecture's contribution. Predictions are averaged over seeds; picking the best seed would be selecting on the test set.</p></details>
+  <details><summary>Technical agent</summary><p>Peephole LSTM cells and a temporal-attention layer, written from scratch in PyTorch, trained on 30-day sequences of price, volume and indicator features to predict the probability that the stock rises from the next open to the following open. A 2×2 ablation (peephole on/off × attention on/off) with three seeds each isolates the architecture's contribution. Predictions are averaged over seeds; picking the best seed would be selecting on the test set. Every trading configuration uses the LSTM-TAL variant (attention without peepholes); no variant differs from chance, so the choice does not change any conclusion.</p></details>
   <details><summary>Sentiment agent</summary><p>An instruction-tuned LLM (Qwen2.5-1.5B locally; Qwen2.5-3B for the final comparison) labels each headline Good, Bad or Unknown for the stock. The backend reads the three labels' first-token logits in one forward pass instead of generating text, so the output is deterministic and never unparseable. Daily views average the headline scores; the agent abstains on days without news.</p></details>
   <details><summary>Regime agent</summary><p>Four causal, equally weighted votes: price against its 200-day average, 60-day relative strength against the Nifty, position in the 52-week range, and (optionally) Nifty momentum. Confidence is cut in high-volatility states.</p></details>
   <details><summary>Fundamentals agent (new for the final evaluation)</summary><p>Uses only annual statements, each treated as unknown until 61 days after the fiscal year end, one day past the SEBI LODR Regulation 33 deadline for audited results, so the agent can be late but never early. Net-profit growth, revenue growth, return on equity and change in ROE are z-scored across the universe on each decision date using only reports public on that date. Limitations: the source shows restated figures, and no valuation ratio is used.</p></details>
@@ -835,7 +835,25 @@ function labRun(P) {
     bNet[t] = bg + Math.max(0, 1 - bInv) * rf - bCost[t];
     if (K.length === S) bNet[t] = L.bh[d];                    // full universe: the report's own Buy&Hold track
   }
-  return { P, n, W, SC, CF, DD, me: labMetrics(net, turn, expo, cost), gr: labMetrics(gross, turn, expo, cost), bh: labMetrics(bNet, bTurn, bExpo, bCost) };
+  return { P, n, W, SC, CF, DD, net, bNet, me: labMetrics(net, turn, expo, cost), gr: labMetrics(gross, turn, expo, cost), bh: labMetrics(bNet, bTurn, bExpo, bCost) };
+}
+// Paired circular block bootstrap of Sharpe(a) - Sharpe(b): backtest/stats.py paired_sharpe_difference
+// (block 20, same resampled days for both series). Seeded, so a rerun gives the same answer.
+function labBootstrap(a0, b0, nBoot = 2000, block = 20) {
+  const a = [], b = []; for (let i = 0; i < a0.length; i++) if (a0[i] != null && b0[i] != null) { a.push(a0[i]); b.push(b0[i]); }
+  const n = a.length, rf = Math.pow(1.06, 1 / 252) - 1; if (n < block * 2) return null;
+  let seed = 20260909; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const sharpe = (sx, sxx) => { const m = sx / n, v = (sxx - n * m * m) / (n - 1); return v > 1e-24 ? (m - rf) / Math.sqrt(v) * Math.sqrt(252) : 0; };
+  const draws = new Float64Array(nBoot), nb = Math.ceil(n / block);
+  for (let r = 0; r < nBoot; r++) {
+    let sa = 0, saa = 0, sb = 0, sbb = 0, c = 0;
+    for (let q = 0; q < nb && c < n; q++) { const st = Math.floor(rnd() * n); for (let j = 0; j < block && c < n; j++, c++) { const i = (st + j) % n; sa += a[i]; saa += a[i] * a[i]; sb += b[i]; sbb += b[i] * b[i]; } }
+    draws[r] = sharpe(sa, saa) - sharpe(sb, sbb);
+  }
+  const sorted = Float64Array.from(draws).sort(), q = f => sorted[Math.min(nBoot - 1, Math.max(0, Math.round(f * (nBoot - 1))))];
+  let le = 0, ge = 0; for (const d of draws) { if (d <= 0) le++; if (d >= 0) ge++; }
+  let ta = 0, taa = 0, tb = 0, tbb = 0; for (let i = 0; i < n; i++) { ta += a[i]; taa += a[i] * a[i]; tb += b[i]; tbb += b[i] * b[i]; }
+  return { point: sharpe(ta, taa) - sharpe(tb, tbb), lo: q(0.025), hi: q(0.975), p: Math.min(1, 2 * Math.min(le, ge) / nBoot), nBoot };
 }
 
 // ---- lab UI ---------------------------------------------------------------------
@@ -885,7 +903,7 @@ function labGo() {
   const P = LAB.P, L = window.LAB_DATA;
   if (!P.agents.length) { $("labStatus").textContent = "Pick at least one agent."; return; }
   const t0 = performance.now(), R = labRun(P), ms = performance.now() - t0; LAB.R = R;
-  $("labStatus").textContent = `Ran ${(R.n * P.stocks.length).toLocaleString()} decisions over ${R.n.toLocaleString()} trading days in ${ms.toFixed(0)} ms.`;
+  $("labStatus").textContent = `Ran ${(R.n * P.stocks.length).toLocaleString()} decisions over ${R.n.toLocaleString()} trading days in ${ms.toFixed(0)} ms, then a 2,000-draw paired block bootstrap against Buy&Hold.`;
   const box = $("labTiles"); box.innerHTML = "";
   const tile = (k, v, n) => { const c = el("div", "card tile"); c.append(el("div", "k", esc(k)), el("div", "v", esc(v)), el("div", "n", esc(n))); box.append(c); };
   const m = R.me, b = R.bh;
@@ -894,7 +912,14 @@ function labGo() {
   tile("Max drawdown", pct(m.dd), `Buy&Hold ${pct(b.dd)}`);
   tile("Turnover", m.to.toFixed(1) + "× a year", `Costs take ${pct(m.drag, 2)} a year`);
   tile("Average invested", pct(m.exp, 0), "The rest is cash earning 6%");
-  tile("Verdict", m.sharpe > b.sharpe ? "Above Buy&Hold" : "Below Buy&Hold", m.sharpe > b.sharpe ? "On this window, by net Sharpe. Not a significance test, and a setting chosen after seeing results is in-sample." : "On this window, by net Sharpe.");
+  const bs = labBootstrap(R.net, R.bNet); LAB.bs = bs;
+  if (!bs) tile("Sharpe difference vs Buy&Hold", sgn(m.sharpe - b.sharpe), "Window too short for a bootstrap test.");
+  else {
+    const apart = bs.lo > 0 || bs.hi < 0;
+    tile("Sharpe difference vs Buy&Hold", sgn(bs.point), `95% interval ${sgn(bs.lo)} to ${sgn(bs.hi)}, p = ${bs.p < 0.001 ? "<0.001" : bs.p.toFixed(3)}. ` +
+      (apart ? (bs.point > 0 ? "Above Buy&Hold on this window, but a setting picked after seeing results is in-sample and this p is not corrected for the settings tried." : "Worse than Buy&Hold beyond chance on this window.")
+             : "Not distinguishable from Buy&Hold: the interval includes zero."));
+  }
   const name = labMatch(P), chk = $("labCheck");
   if (name && L.published[name]) {
     const pub = L.published[name];

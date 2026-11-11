@@ -15,7 +15,7 @@
 Vipluv (22MF3IM22) \textperiodcentered{} Department of Industrial \& Systems Engineering, IIT Kharagpur \textperiodcentered{} Supervisor: Prof.\ S.\ P.\ Sarmah\par
 \vspace{4pt}\hrule\vspace{6pt}
 
-\textbf{Summary.} This project builds and evaluates an explainable multi-agent decision-support system for NSE-listed equities: a technical agent (peephole LSTM with temporal attention), an LLM headline-sentiment agent, a market-regime agent, a point-in-time fundamentals agent, a bull/bear LLM debate and a deterministic risk manager. Every configuration is evaluated on a purged, embargoed walk-forward (19,110 out-of-sample decisions, 2018-12-07 to 2026-08-27) under the full Indian delivery cost schedule (about 32 bps round trip). \textbf{No configuration beats Buy-and-Hold} (net Sharpe 0.59; best agent configuration, Tech+Regime, 0.35). The result replicates on a universe three times larger and on data the mid-semester study never saw. What the system does deliver is risk control and auditability: the regime-aware configurations roughly halve maximum drawdown, and the decision rationales are exactly reconstructable and faithful under deletion tests.
+\textbf{Summary.} This project builds and evaluates an explainable multi-agent decision-support system for NSE-listed equities: a technical agent (LSTM with temporal attention), an LLM headline-sentiment agent, a market-regime agent, a point-in-time fundamentals agent, a bull/bear LLM debate and a deterministic risk manager. Every configuration is evaluated on a purged, embargoed walk-forward (19,110 out-of-sample decisions, 2018-12-07 to 2026-08-27) under the full Indian delivery cost schedule (about 32 bps round trip). \textbf{No configuration beats Buy-and-Hold} (net Sharpe 0.59; best agent configuration, Tech+Regime, 0.35). The result replicates on a universe three times larger and on data the mid-semester study never saw. What the system does deliver is risk control and auditability: the regime-aware configurations cut maximum drawdown by about a third to a half, and the decision rationales are exactly reconstructable and faithful under deletion tests.
 
 \section{Objective and status}
 Most published stock-prediction systems emit a score with no rationale and are validated on US indices with backtests that ignore transaction costs. This project adapts three lines of work to Indian equities (PLSTM-TAL [1], LLM headline sentiment [2], multi-agent debate [3]) and evaluates them under one protocol strict enough that a negative answer is trustworthy. All objectives from the initial and mid-semester reports are complete:
@@ -32,7 +32,7 @@ Most published stock-prediction systems emit a score with no rationale and are v
 \end{itemize}
 
 \section{Method}
-\textbf{Technical agent.} Peephole LSTM cells and a temporal-attention layer, written from scratch in PyTorch, trained on 30-day feature sequences to predict whether the stock rises from the next open to the following open. A $2\times2$ ablation (peephole $\times$ attention), three seeds each; predictions are seed-averaged.
+\textbf{Technical agent.} Peephole LSTM cells and a temporal-attention layer, written from scratch in PyTorch, trained on 30-day feature sequences to predict whether the stock rises from the next open to the following open. A $2\times2$ ablation (peephole $\times$ attention), three seeds each; predictions are seed-averaged. Every trading configuration uses the LSTM-TAL variant (attention without peepholes).
 
 \textbf{Sentiment agent.} Qwen2.5 labels each headline \emph{Good}, \emph{Bad} or \emph{Unknown} by reading the three labels' first-token logits in one forward pass: deterministic and never unparseable. The agent abstains on days without news.
 
@@ -84,12 +84,12 @@ MeanReversion & -1.41 & 0.68 & -18.1\% & -79.6\% & 223.4x & 76\% & 0.000 \\
 \textbf{What each new component did.}
 \begin{itemize}
 \item \textbf{Fundamentals} lower Sharpe when added to Tech+Regime (0.35 $\to$ 0.24) and do not rescue the sentiment configuration (0.17 $\to$ 0.04).
-\item \textbf{The no-trade band} cuts turnover (23.6x $\to$ 16.0x a year) and lifts Sharpe (0.21 $\to$ 0.28): the only component that helps, and it helps by trading less, not by predicting better.
-\item \textbf{The edge-vs-cost gate} exposes the core finding: almost no signal clears the 32 bps hurdle, so the book is invested only 7\% of the time. Its small drawdown is the drawdown of cash.
+\item \textbf{The no-trade band} cuts turnover (23.6x $\to$ 16.0x a year) and lifts Sharpe (0.21 $\to$ 0.28): the only addition with a higher point estimate (not statistically distinguishable), and it comes from trading less, not from predicting better.
+\item \textbf{The edge-vs-cost gate} exposes the core finding: almost no signal clears the 32 bps hurdle, so average exposure is only 7\% of capital. Its small drawdown is the drawdown of cash.
 \item \textbf{Conviction-gated debate:} 0.14 without fundamentals, 0.14 with them.
 \end{itemize}
 
-\textbf{Extended universe.} The technical agent is re-trained on 30 names and run to 2026-11-04 (58,620 decisions). No news corpus exists for the 20 added names, so this tests the technical, regime and fundamentals agents and the risk layer (Table~\ref{tab:ext}). The ordering replicates, and with three times the cross-section the negative result sharpens: four agent configurations are now \emph{significantly worse} than Buy-and-Hold after Holm correction. On the fresh Sep--Nov 2026 holdout (44 days, too short for inference) Buy-and-Hold returned 3.15\% against $-2.49\%$ for Tech+Regime.
+\textbf{Extended universe.} The technical agent is re-trained on 30 names and run to 2026-11-04 (58,620 decisions). No news corpus exists for the 20 added names, so this tests the technical, regime and fundamentals agents and the risk layer (Table~\ref{tab:ext}). The broad ordering replicates, and with three times the cross-section the negative result sharpens: four agent configurations are now \emph{significantly worse} than Buy-and-Hold after Holm correction. On the fresh Sep--Nov 2026 holdout (44 days, too short for inference) Buy-and-Hold returned 3.15\% against $-2.49\%$ for Tech+Regime.
 
 \begin{table}[H]
 \centering\small
@@ -112,13 +112,13 @@ Tech-only & 0.09 & 0.29 & 6.4\% & -7.7\% & 7.2x & 0.198 \\
 
 \textbf{Sentiment, earnings and model size.} On the full corpus, debiased daily sentiment predicts neither the next day nor the next five (every information coefficient indistinguishable from zero, Holm $p=1.000$). Both LLMs then scored an identical 10,240-headline matched sample. They agree on 60.3\% of labels (Cohen's $\kappa=0.39$); the 3B model is far less bullish (Good:Bad 1.70 against 3.14) and says \emph{Unknown} far more often (68.5\% vs 34.3\%). On earnings sessions the raw tone predicts the next open-to-open return with the \emph{opposite} sign for both models (IC $-0.084$ and $-0.085$; Holm $p$ 0.003 and 0.002): a reversal, not a continuation. It is not a tradable edge: it does not survive the causal debiasing step (Holm $p$ 0.072), and the spread ($-26$ and $-37$ bps) is of the same order as the 32 bps round-trip cost. A larger model changes how headlines are labelled, not the conclusion.
 
-\textbf{Risk control in stressed markets.} Over crash-regime days (Nifty trailing 60-day return below $-10\%$; 94 days, almost all in the 2020 COVID crash) the regime-aware configurations protect capital: maximum drawdown is $-1.1\%$ for Tech+Regime, $-2.5\%$ for Regime+Fund and $-8.8\%$ for All4+Debate(conviction), against $-23.6\%$ for Buy-and-Hold. The overlay trades upside for downside protection, and over the full period that trade loses on net.
+\textbf{Risk control in stressed markets.} Over crash-regime days (Nifty trailing 60-day return below $-10\%$; 82 days in the test window, 56 of them in 2020) the regime-aware configurations protect capital: maximum drawdown is $-1.1\%$ for Tech+Regime, $-2.5\%$ for Regime+Fund and $-8.8\%$ for All4+Debate(conviction), against $-23.6\%$ for Buy-and-Hold. In the milder January--June 2022 drawdown the overlay gave no protection. It trades upside for downside protection in sharp crashes, and over the full period that trade loses on net.
 
 \section{Explainability}
 Explainability is treated as a testable property. Four checks run over every logged decision: \emph{provenance} (does the rationale name the model that produced its numbers?), \emph{integrity} (do stated values equal logged values?), \emph{reconstruction} (can the score be recomputed from the logged opinions?) and \emph{deletion faithfulness} (does removing the top-attributed agent flip the decision more often than removing another?).
 \begin{itemize}
 \item \textbf{Integrity and reconstruction} pass at 100.00\% on every decision log, mid-semester and final.
-\item \textbf{Provenance found a real defect:} all 19,110 mid-semester rationales credited PLSTM-TAL for predictions produced by LSTM-TAL. Every number was correct; the explanation was not. It is fixed, and the final logs pass at 100\%.
+\item \textbf{Provenance found a real defect:} all 19,110 rationales in each of the five mid-semester logs credited PLSTM-TAL for predictions produced by LSTM-TAL. Every number was correct; the explanation was not. It is fixed, and the final logs pass at 100\%.
 \item \textbf{Deletion faithfulness} (Table~\ref{tab:del}): removing the top-attributed agent flips 37.4--71.3\% of decisions, against 0.0--3.4\% for another agent (McNemar $p<10^{-6}$ in every configuration).
 \end{itemize}
 
@@ -155,7 +155,7 @@ The attributions show that the regime agent is the decisive input in the large m
 \end{itemize}
 
 \section{Conclusion}
-The system is built, tested and reproducible end to end. Under realistic Indian costs and honest statistics it does not beat Buy-and-Hold: on the original universe, on three times as many stocks, or on data that did not exist at the mid-semester review. None of the November additions changes that. What survives is a regime-aware risk overlay that roughly halves drawdowns, and an explanation layer that is measurably faithful and was itself the instrument that diagnosed why the system behaves as it does. \textbf{Future work:} intraday or event-time horizons; point-in-time vendor fundamentals with valuation ratios; a frontier LLM for the debate; a cross-sectional, market-neutral formulation.
+The system is built, tested and reproducible end to end. Under realistic Indian costs and honest statistics it does not beat Buy-and-Hold: on the original universe, on three times as many stocks, or on data that did not exist at the mid-semester review. None of the November additions changes that. What survives is a regime-aware risk overlay that cuts maximum drawdown by a third to a half, and an explanation layer that is measurably faithful and was itself the instrument that diagnosed why the system behaves as it does. \textbf{Future work:} intraday or event-time horizons; point-in-time vendor fundamentals with valuation ratios; a frontier LLM for the debate; a cross-sectional, market-neutral formulation.
 
 \vspace{4pt}{\footnotesize
 \textbf{References.} [1] Latif et al., PLSTM-TAL, \emph{Heliyon} 10(6):e27747, 2024. [2] Lopez-Lira and Tang, Can ChatGPT forecast stock price movements?, arXiv:2304.07619, 2023. [3] Xiao et al., TradingAgents, arXiv:2412.20138, 2024.\par

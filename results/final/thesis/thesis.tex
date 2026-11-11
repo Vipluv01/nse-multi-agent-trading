@@ -26,7 +26,7 @@ Track: Financial Analysis / Quantitative Finance\par
 \end{titlepage}
 
 \begin{abstract}
-This project builds and evaluates an explainable multi-agent decision-support system for NSE-listed equities, combining a technical agent based on a peephole LSTM with temporal attention (PLSTM-TAL), an LLM headline-sentiment agent, a market-regime agent, a point-in-time fundamentals agent, a bull/bear LLM debate and a deterministic risk manager. Every configuration is evaluated on a purged, embargoed walk-forward (19,110 out-of-sample decisions, 2018-12-07 to 2026-08-27) under the full Indian delivery cost schedule (about 32 bps round trip), with block-bootstrap confidence intervals, Holm correction and the Deflated Sharpe Ratio. \textbf{No configuration beats Buy-and-Hold} (Buy-and-Hold net Sharpe 0.59; best agent configuration, Tech+Regime, 0.35; no Holm-corrected difference in the agents' favour). The result replicates on a universe three times larger and on data the mid-semester study never saw. What the system does deliver is risk control and auditability: the regime-aware configurations roughly halve maximum drawdown, and a four-part explainability audit shows the rationales are exactly reconstructable, faithful under deletion tests, and -- once a provenance bug the audit itself caught was fixed -- correct about which model produced each number. Because every model, black-box or explainable, sits at chance-level directional accuracy, there is no accuracy--explainability trade-off to pay in this setting.
+This project builds and evaluates an explainable multi-agent decision-support system for NSE-listed equities, combining a technical agent from the PLSTM-TAL family (an LSTM with temporal attention; the deployed variant is LSTM-TAL), an LLM headline-sentiment agent, a market-regime agent, a point-in-time fundamentals agent, a bull/bear LLM debate and a deterministic risk manager. Every configuration is evaluated on a purged, embargoed walk-forward (19,110 out-of-sample decisions, 2018-12-07 to 2026-08-27) under the full Indian delivery cost schedule (about 32 bps round trip), with block-bootstrap confidence intervals, Holm correction and the Deflated Sharpe Ratio. \textbf{No configuration beats Buy-and-Hold} (Buy-and-Hold net Sharpe 0.59; best agent configuration, Tech+Regime, 0.35; no Holm-corrected difference in the agents' favour). The result replicates on a universe three times larger and on data the mid-semester study never saw. What the system does deliver is risk control and auditability: the regime-aware configurations cut maximum drawdown by 35\% to 46\% on the core universe (the best, Tech+Regime, from -38.6\% to -20.7\%), and a four-part explainability audit shows the rationales are exactly reconstructable, faithful under deletion tests, and -- once a provenance bug the audit itself caught was fixed -- correct about which model produced each number. Because every model, black-box or explainable, sits at chance-level directional accuracy, there is no accuracy--explainability trade-off to pay in this setting.
 \end{abstract}
 \tableofcontents\newpage
 \section{Introduction}
@@ -57,7 +57,7 @@ Full ablation re-run; explainability evaluation & Completed (Sec. 5.3, 5.6, 5.7)
 
 \subsection{Contributions}
 \begin{itemize}
-\item A complete, tested, reproducible multi-agent pipeline for NSE equities (data, five agents, debate, risk manager, cost-aware backtester, live paper-trading demonstration).
+\item A complete, tested, reproducible multi-agent pipeline for NSE equities (data, four agents, debate, risk manager, cost-aware backtester, live paper-trading demonstration).
 \item A strict, pre-registered evaluation: purged and embargoed walk-forward, full Indian cost model, block bootstrap, Holm, Deflated Sharpe. The headline result is negative and is reported as such.
 \item A point-in-time fundamentals agent built only from disclosure-lagged annual reports, closing the gap the mid-semester design left open without introducing look-ahead.
 \item A measured, not asserted, explainability evaluation (provenance, integrity, reconstruction, deletion faithfulness) and an accuracy--explainability comparison against black-box models.
@@ -92,8 +92,8 @@ Fundamentals & Annual P\&L + balance sheet, 30 names (screener.in) & FY2015 -- F
 
 Two time corrections are applied to news: headlines published after the 15:30 IST close move to the next calendar day, and weekend/holiday dates roll to the next trading session (skipping the second step silently discards 16\% of the corpus). The extended price series are stored in a separate cache because Yahoo's dividend adjustment rewrites past adjusted prices whenever a new dividend is paid; refreshing the original cache in place would have silently moved every mid-semester number.
 \section{Methodology}
-\subsection{Technical agent (PLSTM-TAL)}
-Peephole LSTM cells and a temporal-attention layer are implemented from scratch in PyTorch and trained on 30-day sequences of price/volume/indicator features to predict the probability that the stock rises from the next open to the following open. A $2\times2$ ablation (peephole on/off $\times$ attention on/off), three seeds each, isolates the architecture's contribution. Predictions are seed-averaged; picking the best seed would be selecting on the test set.
+\subsection{Technical agent (LSTM with temporal attention)}
+Peephole LSTM cells and a temporal-attention layer are implemented from scratch in PyTorch and trained on 30-day sequences of price/volume/indicator features to predict the probability that the stock rises from the next open to the following open. A $2\times2$ ablation (peephole on/off $\times$ attention on/off), three seeds each, isolates the architecture's contribution. Predictions are seed-averaged; picking the best seed would be selecting on the test set. The agent used in every trading configuration wraps the LSTM-TAL variant (temporal attention without peepholes), as recorded in each run's metadata. No variant is distinguishable from chance (Section 5.1), so this choice does not affect any conclusion.
 \subsection{Sentiment agent}
 An instruction-tuned LLM (Qwen2.5-1.5B locally; Qwen2.5-3B for the final comparison) labels each headline \emph{Good}, \emph{Bad} or \emph{Unknown} for the stock. Rather than generating text and parsing it, the backend reads the three labels' first-token logits in one forward pass and renormalises -- deterministic, about 50$\times$ faster, and never unparseable. Daily views average headline scores; confidence falls with headline disagreement and with the model's Unknown mass, and the agent abstains on days without news.
 \subsection{Regime agent}
@@ -101,9 +101,9 @@ Four causal, equally weighted votes -- price vs its 200-day average, 60-day rela
 \subsection{Fundamentals agent (new)}
 The mid-semester design deliberately had no fundamental agent because today's ratios inserted into a 2019 decision are look-ahead. The final agent uses only \emph{annual} statements, each treated as unknown until 61 days after the fiscal year end -- one day past SEBI LODR Regulation 33's 60-day deadline for audited results. Using the legal deadline can only make the agent late, never early. Four features (net-profit growth, revenue growth, return on equity, change in ROE) are z-scored \emph{across the universe on each decision date} using only reports public on that date; the stance is half the mean z-score, clipped to $[-1,1]$, at a capped confidence of 0.5 because fundamentals move once a year. Irregular periods from fiscal-year changes (HCLTECH's 9-month 2016, NESTLEIND's 15-month 2024) are recognised: growth is undefined across them and ROE is annualised. Two limitations are stated rather than hidden: the source shows restated rather than as-first-reported figures, and no valuation ratio is used because annual statements do not give a share count consistent with the split-adjusted price series.
 \subsection{Debate and the conviction gate}
-On contested days a bull and a bear researcher each argue from the agents' findings; the LLM scores the strength of each case by constrained logits, and the net residual moves the score by a fixed 35\% weight (contested debates also cut confidence by 30\%). The mid-semester gate escalated 97.4\% of days because agent stances live on different scales; the conviction gate escalates only when both a confidence-weighted bull and bear stance exceed 0.10. In the final run it escalated 28.9\% of decisions.
+On contested days a bull and a bear researcher each argue from the agents' findings; the LLM scores the strength of each case by constrained logits, and the net residual moves the score by a fixed 35\% weight (contested debates also cut confidence by 30\%). The mid-semester gate escalated 97.4\% of days because agent stances live on different scales; the conviction gate escalates only when both a confidence-weighted bull and bear stance exceed 0.10. In the final run it escalated 10.5\% of decisions without the fundamentals agent and 28.9\% with it.
 \subsection{Trader and risk manager}
-The trader takes a confidence-weighted mean of stances (no learned stacker: with about 1,900 test days, a fitted meta-model would fit the test period). The deterministic risk manager applies a confidence floor, volatility targeting (20\% annualised), a drawdown brake and flat limit, a per-name cap of 20\% and a portfolio gross cap of 100\%; idle cash earns a 6\% risk-free rate. Two cost-aware components are new for the final evaluation, both opt-in so the mid-semester numbers reproduce exactly:
+The trader takes a confidence-weighted mean of stances (no learned stacker: with about 1,900 test days, a fitted meta-model would fit the test period). The deterministic risk manager applies a confidence floor, volatility targeting (20\% annualised), a drawdown brake and flat limit, a per-name cap of 20\% and a portfolio gross cap of 100\%; idle cash earns a 6\% risk-free rate. Two cost-aware components are new for the final evaluation, both opt-in so the mid-semester configurations are unaffected by them:
 \begin{itemize}
 \item \textbf{Edge-vs-cost gate}: trade only if score $\times$ confidence $\times$ the stock's typical daily move exceeds the round-trip cost.
 \item \textbf{No-trade band} (0.05, fixed in advance at one quarter of the per-name cap): a held position is not resized when the new target is within the band; entries and exits are never banded, so the risk layer can always go flat.
@@ -119,7 +119,7 @@ Purged, embargoed walk-forward: 3-year training windows, 6-month test windows, a
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lrrrr}
 \toprule
-\textbf{Architecture} & \textbf{Accuracy (mean \$\textbackslash{}pm\$ sd)} & \textbf{AUC} & \textbf{MCC} & \textbf{p vs chance} \\
+\textbf{Architecture} & \textbf{Accuracy (mean $\pm$ sd)} & \textbf{AUC} & \textbf{MCC} & \textbf{p vs chance} \\
 \midrule
 LSTM & 0.5045 $\pm$ 0.0019 & 0.5049 & 0.0076 & 0.21 \\
 LSTM-TAL & 0.5024 $\pm$ 0.0005 & 0.5017 & 0.0056 & 0.51 \\
@@ -202,10 +202,10 @@ Qwen2.5-3B & earnings & debiased & 1803 & -0.0558 & 0.072 & -27.1 & 47.9\% \\
 \caption{Label shares on matched headlines.}
 \end{figure}
 
-\textbf{A reversal, not a continuation.} On earnings sessions, the raw tone of the earnings headlines predicts the next open-to-open return with the \emph{opposite} sign for both models (IC -0.084, -0.085; Holm-adjusted $p$ 0.003, 0.002): positive-tone results are followed by underperformance, the positive-minus-negative tercile spread being -26, -37 bps. Because the system trades only from the open after a headline is actionable, the initial reaction has already happened; what remains is a partial overshoot that corrects. Three qualifications keep this from being an edge: it does not survive the causal debiasing step (Holm $p$ 0.072, 0.072); the spread is a long-short figure of the same order as the 32 bps round-trip cost; and it is the opposite of what a long-only sentiment agent that buys on good news assumes -- which is part of why adding sentiment never helped in the ablation. It is the direction Lopez-Lira and Tang's own result would predict for a market in which the news is already priced.
-Doubling the model size changes \emph{how} headlines are labelled -- a much weaker bullish prior -- but not the conclusion: neither model's tone is a usable long-only signal. Within the compute available here, a larger model is not the missing ingredient.
+\textbf{A reversal, not a continuation.} On earnings sessions, the raw tone of the earnings headlines predicts the next open-to-open return with the \emph{opposite} sign for both models (IC -0.084, -0.085; Holm-adjusted $p$ 0.003, 0.002): positive-tone results are followed by underperformance, the positive-minus-negative tercile spread being -26, -37 bps. Because the system trades only from the open after a headline is actionable, the initial reaction has already happened; what remains is a partial overshoot that corrects. Three qualifications keep this from being an edge: it does not survive the causal debiasing step (Holm $p$ 0.072, 0.072); the spread is a long-short figure of the same order as the 32 bps round-trip cost; and it is the opposite of what a long-only sentiment agent that buys on good news assumes -- which is part of why adding sentiment never helped in the ablation. It is consistent with a market in which the news is already priced by the next open.
+Doubling the model size changes \emph{how} headlines are labelled -- a much weaker bullish prior -- but not the conclusion: neither model's tone is a usable long-only signal. Within the compute available here, one doubling of model size gives no sign that a larger model is the missing ingredient.
 \subsection{Full ablation, core universe}
-All configurations share 19,110 decisions (2018-12-07 to 2026-08-27), the same execution and the same cost model. The mid-semester configurations reproduce their published Sharpe ratios to within 0.004 (the residual is the price-snapshot correction described in Section 6), so every new component is measured against effectively the same baseline.
+All agent configurations share 19,110 decisions (2018-12-07 to 2026-08-27), the same execution and the same cost model. The mid-semester agent configurations reproduce their published Sharpe ratios to within 0.004; Buy-and-Hold moves from 0.58 to 0.59 (both residuals come from the price-snapshot correction described in Section 6), so every new component is measured against effectively the same baseline.
 \begin{table}[H]
 \centering
 \footnotesize
@@ -213,7 +213,7 @@ All configurations share 19,110 decisions (2018-12-07 to 2026-08-27), the same e
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lrrrrrrrr}
 \toprule
-\textbf{Strategy} & \textbf{Sharpe net} & \textbf{Sharpe gross} & \textbf{CAGR} & \textbf{MaxDD} & \textbf{Vol} & \textbf{Turnover/yr} & \textbf{Exposure} & \textbf{Holm p vs B\textbackslash{}\&H} \\
+\textbf{Strategy} & \textbf{Sharpe net} & \textbf{Sharpe gross} & \textbf{CAGR} & \textbf{MaxDD} & \textbf{Vol} & \textbf{Turnover/yr} & \textbf{Exposure} & \textbf{Holm p vs B\&H} \\
 \midrule
 Buy\&Hold & 0.59 & 0.59 & 16.4\% & -38.6\% & 19.0\% & 0.1x & 100\% & -- \\
 RSI(14) & 0.43 & 0.47 & 12.3\% & -39.8\% & 17.0\% & 4.2x & 60\% & 0.818 \\
@@ -241,6 +241,7 @@ MeanReversion & -1.41 & 0.68 & -18.1\% & -79.6\% & 17.3\% & 223.4x & 76\% & 0.00
 \caption{Net Sharpe with 95\% block-bootstrap CIs (core universe). The dashed line is Buy-and-Hold.}
 \end{figure}
 
+The Deflated Sharpe Ratio, which charges each result for the 16 strategies tried, is 0.23 for Buy-and-Hold and at most 0.08 for any agent configuration: no strategy here, the benchmark included, has a Sharpe ratio that is statistically secure once the search is accounted for.
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.92\linewidth]{equity_core.png}
@@ -250,8 +251,8 @@ MeanReversion & -1.41 & 0.68 & -18.1\% & -79.6\% & 17.3\% & 223.4x & 76\% & 0.00
 \paragraph{What each new component did.}
 \begin{itemize}
 \item \textbf{Fundamentals} lower Sharpe when added to Tech+Regime (0.35 $\to$ 0.24) and do not rescue the sentiment configuration (0.17 $\to$ 0.04). Annual quality/growth rankings among ten large caps carry no short-horizon information.
-\item \textbf{The no-trade band} cuts turnover (23.6x $\to$ 16.0x a year) and lifts Sharpe (0.21 $\to$ 0.28) -- the only component that helps, and it helps by trading less, not by predicting better.
-\item \textbf{The edge-vs-cost gate} works as designed and exposes the core finding: almost no signal clears the 32 bps hurdle, so the book is invested only 7\% of the time. Its small drawdown (-5.1\%) is the drawdown of cash, and its Calmar ratio should be read that way.
+\item \textbf{The no-trade band} cuts turnover (23.6x $\to$ 16.0x a year) and lifts Sharpe (0.21 $\to$ 0.28) -- the only addition with a higher point estimate (the difference is not statistically distinguishable), and it comes from trading less, not from predicting better.
+\item \textbf{The edge-vs-cost gate} works as designed and exposes the core finding: on the core universe almost no signal clears the 32 bps hurdle, so average exposure is only 7\% of capital (All4+CostAware+Band). Its small drawdown (-5.1\%) is the drawdown of cash, and its Calmar ratio should be read that way.
 \item \textbf{Conviction-gated debate}: 0.14 without fundamentals, 0.14 with them.
 \end{itemize}
 \subsection{Extended universe and fresh data}
@@ -263,7 +264,7 @@ The extended experiment re-trains the technical agent on 30 names and runs to 20
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lrrrrrrrr}
 \toprule
-\textbf{Strategy} & \textbf{Sharpe net} & \textbf{Sharpe gross} & \textbf{CAGR} & \textbf{MaxDD} & \textbf{Vol} & \textbf{Turnover/yr} & \textbf{Exposure} & \textbf{Holm p vs B\textbackslash{}\&H} \\
+\textbf{Strategy} & \textbf{Sharpe net} & \textbf{Sharpe gross} & \textbf{CAGR} & \textbf{MaxDD} & \textbf{Vol} & \textbf{Turnover/yr} & \textbf{Exposure} & \textbf{Holm p vs B\&H} \\
 \midrule
 Buy\&Hold & 0.74 & 0.74 & 18.5\% & -34.3\% & 17.2\% & 0.1x & 100\% & -- \\
 RSI(14) & 0.66 & 0.74 & 17.5\% & -38.5\% & 18.2\% & 9.3x & 93\% & 0.558 \\
@@ -292,7 +293,7 @@ MeanReversion & -1.97 & 0.85 & -26.5\% & -91.8\% & 17.8\% & 311.2x & 96\% & 0.00
 \caption{Equity and drawdown, extended universe.}
 \end{figure}
 
-Buy-and-Hold's Sharpe on the wider universe is 0.74; the ordering of configurations replicates, and no configuration improves on Buy-and-Hold. With three times the cross-section the test gains power, and the negative result sharpens: 4 agent configurations (Regime+Fund+Band, Tech+Regime, Tech+Regime+Fund, Regime+Fund) are now \emph{significantly worse} than Buy-and-Hold after Holm correction. The null result is not an artefact of a ten-stock universe.
+Buy-and-Hold's Sharpe on the wider universe is 0.74; the broad ordering of configurations replicates, and no configuration improves on Buy-and-Hold. With three times the cross-section the test gains power, and the negative result sharpens: 4 agent configurations (Regime+Fund+Band, Tech+Regime, Tech+Regime+Fund, Regime+Fund) are now \emph{significantly worse} than Buy-and-Hold after Holm correction. The null result is not an artefact of a ten-stock universe.
 \begin{table}[H]
 \centering
 \small
@@ -318,7 +319,7 @@ MeanReversion & 44 & -2.80\% & -9.40\% \\
 \end{table}
 
 \subsection{Risk control in stressed markets}
-Using the mid-semester definition -- every day on which the Nifty's trailing 60-day return is below $-10\%$ (94 trading days, almost all in the 2020 COVID crash) -- the regime-aware configurations protect capital exactly when it matters:
+Using the mid-semester definition -- every day on which the Nifty's trailing 60-day return is below $-10\%$ (82 trading days in the out-of-sample window, 56 of them in 2020 and the rest in 2022, 2025, 2026) -- the regime-aware configurations protect capital exactly when it matters:
 \begin{table}[H]
 \centering
 \small
@@ -348,7 +349,7 @@ All4+CostAware+Band & -0.4\% \\
 \end{tabular}}
 \end{table}
 
-The same pattern holds over calendar windows (March--June 2020; January--June 2022), reported in \texttt{results/final/core/subperiods.csv}. The overlay trades upside for downside protection, and over the full period that trade loses on net -- a different finding from ``no effect''.
+Over calendar windows (\texttt{results/final/core/subperiods.csv}) the picture is mixed. In March--June 2020 the regime-aware configurations fell far less at the worst point (maximum drawdown -5.2\% for Tech+Regime against -33.5\% for Buy-and-Hold), although some ended the window lower than Buy-and-Hold because they missed part of the rebound. In the January--June 2022 drawdown the overlay gave no protection: Tech+Regime's maximum drawdown was -14.5\% against -13.9\%, with a lower return (-9.5\% against -4.7\%). The overlay trades upside for downside protection in sharp crashes, and over the full period that trade loses on net -- a different finding from ``no effect''.
 \subsection{Explainability evaluation}
 Explainability is treated as a testable property. Four checks run over every logged decision:
 \begin{enumerate}
@@ -392,7 +393,7 @@ final-extended & Tech-only & 100\% & 100.00\% & 100.00\% & 100.00\% & 43 \\
 \end{tabular}}
 \end{table}
 
-The provenance check found a real defect: all 19,110 rationales in the mid-semester logs credited PLSTM-TAL for predictions produced by LSTM-TAL, because the runner never told the technical agent which model it was wrapping. Every number was correct; the explanation was not. It is fixed, and the final logs pass at 100\%. An explainability claim that had only been asserted would never have caught this.
+The provenance check found a real defect: all 19,110 rationales in each of the 5 mid-semester logs credited PLSTM-TAL for predictions produced by LSTM-TAL, because the runner never told the technical agent which model it was wrapping. Every number was correct; the explanation was not. It is fixed, and the final logs pass at 100\%. An explainability claim that had only been asserted would never have caught this.
 \begin{table}[H]
 \centering
 \small
@@ -463,12 +464,13 @@ The initial report proposed to quantify how much accuracy explainability costs. 
 \item \textbf{Survivorship.} Both universes are today's large caps, which flatters Buy-and-Hold more than the agents.
 \item \textbf{Fundamentals.} Disclosure-lagged but restated figures; annual frequency only; no valuation ratio.
 \item \textbf{News coverage.} Google-News headlines for ten names; the extended universe has no sentiment.
-\item \textbf{Data snapshot.} During the final evaluation a live-pipeline refresh overwrote the study's price cache; the newer Yahoo snapshot differs from the September one only by removing three phantom bars on NSE holidays (3 of 1,911 sessions). All strategies in each experiment are evaluated on one identical return series, and the cache is now write-protected in code.
+\item \textbf{Data snapshot.} During the final evaluation a live-pipeline refresh overwrote the study's price cache; the newer Yahoo snapshot differs from the September one only by removing three phantom bars on NSE holidays (3 of 1,911 sessions). In the core experiment the agent configurations are scored on all 1,911 sessions and the classical baselines on the 1,908 that remain; this moves Buy-and-Hold's Sharpe from 0.58 to 0.59 and changes no conclusion. The extended experiment uses one snapshot throughout, and the cache is now write-protected in code.
 \end{itemize}
 \section{Conclusion}
-The project set out to build an explainable multi-agent trading system for NSE equities and test whether it beats simple benchmarks. The system is built, tested and reproducible end to end. Under realistic Indian costs and honest statistics it does not beat Buy-and-Hold, on the original universe, on three times as many stocks, or on data that did not exist at the mid-semester review. None of the November additions changes that: a point-in-time fundamentals agent, a larger LLM, earnings-focused sentiment and cost-aware sizing. What survives is a regime-aware risk overlay that roughly halves drawdowns, and an explanation layer that is measurably faithful and was itself the instrument that diagnosed why the system behaves as it does. For a decision-support tool, a transparent ``no edge, but here is exactly why'' is a more useful result than an unexplained positive backtest.
+The project set out to build an explainable multi-agent trading system for NSE equities and test whether it beats simple benchmarks. The system is built, tested and reproducible end to end. Under realistic Indian costs and honest statistics it does not beat Buy-and-Hold, on the original universe, on three times as many stocks, or on data that did not exist at the mid-semester review. None of the November additions changes that: a point-in-time fundamentals agent, a larger LLM, earnings-focused sentiment and cost-aware sizing. What survives is a regime-aware risk overlay that cuts maximum drawdown by a third to a half, and an explanation layer that is measurably faithful and was itself the instrument that diagnosed why the system behaves as it does. For a decision-support tool, a transparent ``no edge, but here is exactly why'' is a more useful result than an unexplained positive backtest.
 \paragraph{Future work.} Intraday or event-time horizons where headline information has not yet been priced; point-in-time vendor fundamentals with valuation ratios; a frontier LLM for the debate; a cross-sectional (market-neutral) formulation that removes the market factor every per-name model currently fights.
 \section*{Reproducibility}
+A live demonstration that needs no installation is at \url{https://vipluv01.github.io/nse-multi-agent-trading/}. Its \emph{Run it yourself} section re-executes the trader, the risk manager, the cost model and the backtest in the browser on the recorded out-of-sample agent opinions; with the published settings it reproduces the Sharpe ratio, CAGR, maximum drawdown and turnover of every non-debate configuration in Table~\ref{tab:core}. The full pipeline is reproduced with:
 \begin{footnotesize}\begin{verbatim}
 cd nse_agents
 .venv/bin/python -m pytest tests/ -q

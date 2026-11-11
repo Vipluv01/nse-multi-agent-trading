@@ -369,10 +369,10 @@ def build() -> dict:
          "text": f"Earnings days do move more ({attn['mean_abs_ret_earnings_bps']:.0f} against {attn['mean_abs_ret_other_bps']:.0f} bps average absolute move, p = {attn['p']:.3f}). "
                  f"Positive headline tone is followed by underperformance the next day (IC {rev.loc['Qwen2.5-1.5B', 'ic_spearman']:.3f} and {rev.loc['Qwen2.5-3B', 'ic_spearman']:.3f}; "
                  f"Holm p {rev.loc['Qwen2.5-1.5B', 'ic_p_holm']:.3f} and {rev.loc['Qwen2.5-3B', 'ic_p_holm']:.3f})."},
-        {"tag": "The one addition that helps", "title": "Cost-aware sizing and a no-trade band",
+        {"tag": "Higher point estimate, by trading less", "title": "Cost-aware sizing and a no-trade band",
          "text": f"A 5% no-trade band cuts turnover from {by['Regime+Fund']['to']:.0f}x to {by['Regime+Fund+Band']['to']:.0f}x a year and lifts net Sharpe from "
-                 f"{f2(by['Regime+Fund']['sharpe'])} to {f2(by['Regime+Fund+Band']['sharpe'])}. The cost-aware edge gate is too strict: it leaves the book "
-                 f"{100 - by['Tech+Regime+Fund+CostAware+Band']['exp'] * 100:.0f}% in cash."},
+                 f"{f2(by['Regime+Fund']['sharpe'])} to {f2(by['Regime+Fund+Band']['sharpe'])}. The gain is not statistically distinguishable. The cost-aware edge gate is too strict: "
+                 f"average exposure falls to {by['Tech+Regime+Fund+CostAware+Band']['exp'] * 100:.0f}% of capital."},
         {"tag": "Same outcome, far fewer LLM calls", "title": "Conviction-gated debate",
          "text": f"The mid-semester gate sent 97.4% of decisions to debate. The conviction gate sends {gates['Full+Debate(conviction)'] * 100:.1f}% "
                  f"(without the fundamentals agent; {gates['All4+Debate(conviction)'] * 100:.1f}% with it), "
