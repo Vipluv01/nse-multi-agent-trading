@@ -13,6 +13,60 @@ Deflated Sharpe Ratio that charges the result for every configuration searched.
 
 ---
 
+## Final evaluation (November 2026)
+
+**Live demo, nothing to install: <https://vipluv01.github.io/nse-multi-agent-trading/>**
+The page has a *Run it yourself* lab: the trader, the risk manager, the cost model and the
+backtest run in the browser on the recorded out-of-sample agent opinions, so any agent
+combination, cost level or risk limit can be tried on the spot. With published settings it
+reproduces the tables below to six decimal places.
+
+| Deliverable | File |
+|---|---|
+| Final report (18 pages) | [`results/final/MTP_Final_Report.pdf`](results/final/MTP_Final_Report.pdf) |
+| Short report (4 pages) | [`results/final/MTP_Short_Report.pdf`](results/final/MTP_Short_Report.pdf) |
+| Presentation (16 slides) | [`results/final/MTP_Final_Presentation.pdf`](results/final/MTP_Final_Presentation.pdf) |
+| Four-line summary | [`results/final/SHORT_REPORT.md`](results/final/SHORT_REPORT.md) |
+| Demo site source | [`scripts/final_make_demo_site.py`](scripts/final_make_demo_site.py) → `results/final/demo/` |
+
+The final evaluation adds everything the mid-semester plan promised, without changing the
+mid-semester study (every new behaviour is opt-in): a universe three times larger with data
+to November 2026, a point-in-time fundamentals agent, a larger LLM (Qwen2.5-3B against 1.5B),
+a study of sentiment around earnings announcements, cost-aware sizing with a no-trade band,
+a conviction-gated debate, and a measured explainability audit.
+
+**The answer did not change: no agent configuration beats Buy-and-Hold after costs.**
+
+| Net of costs, excess of 6% | 10 stocks (Dec 2018 – Aug 2026) | 30 stocks (to Nov 2026) |
+|---|---:|---:|
+| Buy-and-Hold, net Sharpe | 0.59 | 0.74 |
+| Best agent configuration, net Sharpe | 0.35 (Tech+Regime) | 0.36 (Regime+Fund+Band) |
+| Buy-and-Hold, max drawdown | −38.6% | −34.3% |
+| Best agent configuration, max drawdown | −20.7% | −25.1% |
+| Agent configurations significantly worse than Buy-and-Hold (Holm) | 0 | 4 |
+
+What the November work found:
+
+- **Fundamentals agent:** no improvement (Tech+Regime 0.35 → 0.24 with it).
+- **Larger LLM:** a much weaker bullish prior (Good:Bad 1.70 against 3.14), no better predictability.
+- **Earnings sentiment:** a next-day *reversal* on earnings sessions, too small to trade after costs
+  and not robust to debiasing.
+- **No-trade band:** the one addition with a higher point estimate, from trading less (turnover
+  23.6× → 16.0× a year, net Sharpe 0.21 → 0.28; the difference is not statistically distinguishable).
+- **Explainability:** every decision's score reconstructs exactly from its rationale; removing the
+  top-attributed agent flips 37–71% of decisions against 0–3% for another agent; the audit caught
+  a real provenance bug in the mid-semester rationales.
+
+The mid-semester sections below quote Buy-and-Hold at 0.58 and Tech+Regime at 0.34; the final tables
+say 0.59 and 0.35. The difference is a price-snapshot correction (three phantom bars on NSE holidays
+were removed), described in the report's limitations; agent configurations move by at most 0.004.
+
+Full tables: `results/final/core/` and `results/final/extended/`. Run order: see
+[How to reproduce](#how-to-reproduce) and the `final_*.py` scripts. The sections below
+document the mid-semester study the final evaluation builds on.
+
+---
+
 ## Contents
 
 - [The claim, and what actually happened](#the-claim-and-what-actually-happened)
@@ -60,7 +114,7 @@ deliberately unforgiving protocol.
 | Costs are a detail | **Emphatically false.** The mean-reversion baseline has a *gross* Sharpe of **+0.68** and a *net* Sharpe of **−1.41**. Its 223×/year turnover costs 36% of capital annually. |
 | Trying harder (more model classes, horizons, universe breadth) would find an edge | **Tested directly — no.** Nine further pre-registered attempts (GBM, wider universe, cross-sectional labels, longer horizons, debiasing) all failed; one briefly looked real before a units bug in the CI was caught and fixed. |
 | The null result means there is no edge at all | **Not quite — now quantified.** A power analysis shows this study could only reliably detect a true Sharpe above **~1.0**. The honest claim is "no edge that large was found," not "no edge exists." |
-| The risk overlay does nothing since it doesn't beat Buy&Hold | **Wrong mechanism, not no mechanism.** During the 82-day COVID crash it captured a −1.1% drawdown against Buy&Hold's −23.6%. It trades upside for downside protection, and over this window that trade lost on net — a different finding from "no effect." |
+| The risk overlay does nothing since it doesn't beat Buy&Hold | **Wrong mechanism, not no mechanism.** Over the 82 crash-regime days (56 of them in the 2020 COVID crash) it captured a −1.1% drawdown against Buy&Hold's −23.6%. It trades upside for downside protection, and over this window that trade lost on net — a different finding from "no effect." |
 
 The last row is the single most transferable finding. On daily NSE signals, the
 round-trip cost floor is **32 bps** (0.1% STT each way, 0.015% stamp duty on the buy,
@@ -253,7 +307,7 @@ would be circular; defining it from the benchmark's own drawdown is not.
 
 ![Crash-regime drawdown](results/figures/crash_drawdown.png)
 
-**During the 82-day COVID crash, `Tech+Regime` drew down −1.1% while Buy&Hold drew down
+**Over the 82 crash-regime days (56 of them in the 2020 COVID crash), `Tech+Regime` drew down −1.1% while Buy&Hold drew down
 −23.6%.** Every configuration carrying the risk overlay (regime filter, volatility
 scaling, the drawdown brake) clusters near zero; every configuration without it clusters
 near Buy&Hold's loss, including the classical baselines. This is not a fluke of the
@@ -325,7 +379,7 @@ catches the single bad day that averaging is designed to look past.
 
 ## Risk attribution and extended benchmarks
 
-The crash-regime finding above is one specific 82-day window. Formal risk attribution
+The crash-regime finding above is one specific set of 82 days. Formal risk attribution
 (`nse_agents/backtest/metrics.py`: beta, Treynor ratio, Information Ratio, upside/downside
 capture) asks the same question over the *whole* 7.6-year sample against three
 benchmarks — Nifty 50, an equal-weighted index of this study's own 10-name universe, and
@@ -512,7 +566,7 @@ therefore changing very little about the underlying technical-only signal.
 cd nse_agents
 uv venv --python 3.11 && uv pip install -e ".[dev]"
 
-.venv/bin/python -m pytest tests/ -q          # 178 tests, ~90s
+.venv/bin/python -m pytest tests/ -q          # 358 tests, ~90s
 
 # 1. Price data is fetched and cached on first use (Yahoo, split/bonus adjusted).
 # 2. Headline corpus: 36,630 Indian headlines, 2016-2026. Resumable, and shardable
@@ -835,7 +889,7 @@ tuned to the answer.
 
 ## How correctness is verified
 
-**Correctness is established before performance is measured.** The 28 tests are mostly
+**Correctness is established before performance is measured.** The tests (358 at the final evaluation) are mostly
 not shape assertions — the important ones are active attacks on the pipeline:
 
 | Test | The attack |
