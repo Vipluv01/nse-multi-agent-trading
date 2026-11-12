@@ -25,7 +25,7 @@ reproduces the tables below to six decimal places.
 |---|---|
 | Final report (18 pages) | [`results/final/MTP_Final_Report.pdf`](results/final/MTP_Final_Report.pdf) |
 | Short report (4 pages) | [`results/final/MTP_Short_Report.pdf`](results/final/MTP_Short_Report.pdf) |
-| Presentation (16 slides) | [`results/final/MTP_Final_Presentation.pdf`](results/final/MTP_Final_Presentation.pdf) |
+| Presentation (16 slides) | [`results/final/MTP_Final_Presentation.pptx`](results/final/MTP_Final_Presentation.pptx), [PDF copy](results/final/MTP_Final_Presentation.pdf) |
 | Four-line summary | [`results/final/SHORT_REPORT.md`](results/final/SHORT_REPORT.md) |
 | Demo site source | [`scripts/final_make_demo_site.py`](scripts/final_make_demo_site.py) → `results/final/demo/` |
 
