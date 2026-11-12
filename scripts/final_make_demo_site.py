@@ -383,10 +383,10 @@ def build() -> dict:
     decisive = [{"name": r.config, "shares": json.loads(r.decisive_agent_share)} for r in core_d.itertuples(index=False)]
     return {
         "byline": "Vipluv (22MF3IM22) · Department of Industrial and Systems Engineering · Supervisor: Prof. S. P. Sarmah",
-        "headline": (f"<b>The headline result is negative, and that is the contribution.</b> "
+        "headline": (f"<b>Main result.</b> "
                      f"{'No agent configuration beats' if not beats else 'Only ' + ', '.join(beats) + ' beat'} Buy&amp;Hold after real Indian transaction costs, "
-                     f"on {len(meta_c['symbols'])} stocks or {len(meta_e['symbols'])}. What the system delivers is a much smaller drawdown "
-                     f"and a decision trail that can be checked line by line."),
+                     f"on {len(meta_c['symbols'])} stocks or {len(meta_e['symbols'])}. The agent system does give a much smaller drawdown, "
+                     f"and every decision it makes is logged with its reasons."),
         "tiles": [
             {"k": "Net Sharpe, Buy&Hold", "v": f2(bh["sharpe"]), "n": f"Best agent configuration: {f2(best['sharpe'])} ({best['name']})"},
             {"k": "Max drawdown, agents", "v": "−" + pc(best["dd"]), "n": f"Buy&Hold: −{pc(bh['dd'])}"},
