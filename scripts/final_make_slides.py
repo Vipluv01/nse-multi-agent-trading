@@ -1,7 +1,10 @@
 """Build the final-evaluation slide deck (beamer PDF) from the same result files as the thesis.
 
 Run after scripts/final_make_report.py (it reuses that script's figures).
-Output: results/final/slides/slides.pdf -> results/final/MTP_Final_Presentation.pdf
+Output: results/final/slides/slides.pdf (a LaTeX version of the deck).
+
+The deck that is presented, results/final/MTP_Final_Presentation.pptx and its PDF copy, is a
+PowerPoint file built separately in the mid-semester deck's style; this script does not write it.
 Usage: .venv/bin/python scripts/final_make_slides.py
 """
 
@@ -396,8 +399,7 @@ Build an explainable multi-agent decision-support system for NSE stocks, and tes
     if run.returncode != 0:
         print(run.stdout[-2500:])
         return 1
-    shutil.copy(SLIDES / "slides.pdf", FINAL / "MTP_Final_Presentation.pdf")
-    print("wrote", FINAL / "MTP_Final_Presentation.pdf")
+    print("wrote", SLIDES / "slides.pdf")
     return 0
 
 
