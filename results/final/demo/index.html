@@ -163,6 +163,13 @@ button.primary:hover { filter: brightness(1.08); border-color: var(--s1); }
   .agent { grid-template-columns: 1fr; gap: 4px; }
 }
 @media (max-width: 460px) { .tiles, .grid2 { grid-template-columns: 1fr; } }
+/* results.html is this same file with data-page="run": only the lab's results block is shown */
+body:not([data-page="run"]) #labResults { display: none; }
+body[data-page="run"] nav.top, body[data-page="run"] header, body[data-page="run"] section:not(#lab), body[data-page="run"] #lab > :not(#labResults) { display: none; }
+.runhead h1 { margin: 0 0 6px; }
+.runset { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font-size: 14px; }
+.runset dt { color: var(--text-2); } .runset dd { margin: 0; }
+a.btn { display: inline-block; padding: 7px 12px; border: 1px solid var(--line, #ccc); border-radius: 8px; text-decoration: none; color: inherit; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -201,7 +208,7 @@ button.primary:hover { filter: brightness(1.08); border-color: var(--s1); }
 
 <section id="lab">
   <h2>Run it yourself</h2>
-  <p class="sub">This runs in your browser, now. Choose which agents the trader listens to, change the costs and the risk limits, and press Run: the trader, the risk manager, the cost model and the backtest are re-executed on the 19,110 recorded out-of-sample agent opinions and the real next-day returns. The LSTM and the LLM cannot run in a browser, so their recorded outputs are the inputs; the debate step is not available here.</p>
+  <p class="sub">This runs in your browser, now. Choose which agents the trader listens to, change the costs and the risk limits, and press Run: the results open on their own page. The trader, the risk manager, the cost model and the backtest are re-executed in your browser on the 19,110 recorded out-of-sample agent opinions and the real next-day returns. The LSTM and the LLM cannot run in a browser, so their recorded outputs are the inputs; the debate step is not available here.</p>
   <div class="card">
     <div class="controls"><span class="lbl">Start from a published configuration</span><div class="chips" id="labPresets"></div></div>
     <div class="labgrid">
@@ -225,6 +232,14 @@ button.primary:hover { filter: brightness(1.08); border-color: var(--s1); }
       <span class="sub" id="labStatus" style="margin:0;font-size:13px" aria-live="polite"></span>
     </div>
   </div>
+  <div id="labResults">
+  <div class="runhead">
+    <div class="eyebrow">Run it yourself · computed in your browser just now</div>
+    <h1>Backtest results</h1>
+    <p class="sub" id="labRunInfo" aria-live="polite"></p>
+    <div class="controls"><a class="btn" id="labBack" href="index.html#lab">← Change settings</a><a class="btn" href="index.html">Back to the demo</a></div>
+    <div class="card" style="margin-top:12px"><h3>Settings of this run</h3><dl class="runset" id="labRunSet"></dl></div>
+  </div>
   <div class="tiles" id="labTiles" style="grid-template-columns:repeat(3,1fr)"></div>
   <p class="note" id="labCheck" hidden></p>
   <div class="card" style="margin-top:12px">
@@ -240,6 +255,7 @@ button.primary:hover { filter: brightness(1.08); border-color: var(--s1); }
     <div class="controls"><span class="lbl">Stock</span><select id="labTrSym"></select>
       <span class="lbl" style="margin-left:10px">Day</span><input type="range" id="labTrDay" min="0" max="1" value="0" style="flex:1;min-width:160px"><b id="labTrDate" style="min-width:11ch;font-variant-numeric:tabular-nums"></b></div>
     <div class="decision"><div class="verdict" id="labTrVerdict"></div><div><div id="labTrAgents"></div><div id="labTrNotes"></div></div></div>
+  </div>
   </div>
   <div class="card" style="margin-top:12px">
     <h3>What-if: make up one decision</h3>
@@ -858,6 +874,40 @@ function labBootstrap(a0, b0, nBoot = 2000, block = 20) {
 
 // ---- lab UI ---------------------------------------------------------------------
 const LAB = { P: null, R: null, ready: false };
+const RUNPAGE = document.body.dataset.page === "run";    // results.html: same file, shows one run's results
+// Settings travel between index.html and results.html in the query string (works on file:// too).
+function labEncode(P) { return encodeURIComponent(JSON.stringify(P)); }
+function labFromUrl() {
+  const L = window.LAB_DATA, d = labDefaults(), raw = new URLSearchParams(location.search).get("run");
+  if (!raw) return null;
+  try {
+    const q = JSON.parse(raw), P = { ...d }, n = L.dates.length - 1;
+    if (Array.isArray(q.agents)) P.agents = AGN.filter(a => q.agents.includes(a));
+    if (Array.isArray(q.stocks)) { const st = L.symbols.map((_, k) => k).filter(k => q.stocks.includes(k)); if (st.length) P.stocks = st; }
+    for (const [key, , lo, hi] of LAB_SL) if (Number.isFinite(q[key])) P[key] = Math.min(hi, Math.max(lo, q[key]));
+    for (const key of ["volScaling", "brake", "costAware"]) if (typeof q[key] === "boolean") P[key] = q[key];
+    if (Number.isInteger(q.d0) && Number.isInteger(q.d1) && q.d0 >= 0 && q.d1 <= n && q.d0 < q.d1) { P.d0 = q.d0; P.d1 = q.d1; }
+    return P;
+  } catch (e) { return null; }
+}
+function labOpen() {      // index.html: Run opens the results page for the current settings
+  if (!LAB.P.agents.length) { $("labStatus").textContent = "Pick at least one agent."; return; }
+  location.href = "results.html?run=" + labEncode(LAB.P);
+}
+function labRunSummary() {
+  const P = LAB.P, L = window.LAB_DATA, name = labMatch(P), cap = a => a[0].toUpperCase() + a.slice(1);
+  const risk = [P.volScaling && "volatility scaling", P.brake && "drawdown brake", P.costAware && "cost-aware gate"].filter(Boolean);
+  const rows = [
+    ["Configuration", name ? `${name} (published)` : "Custom"],
+    ["Agents", P.agents.map(cap).join(", ")],
+    ["Risk manager", risk.length ? risk.join(", ") : "none of the optional controls"],
+    ...LAB_SL.map(([key, label, , , , fmt]) => [label, fmt(P[key])]),
+    ["Stocks", P.stocks.length === L.symbols.length ? `all ${L.symbols.length}` : P.stocks.map(k => L.symbols[k]).join(", ")],
+    ["Period", `${fdate(L.dates[P.d0])} to ${fdate(L.dates[P.d1])}`],
+  ];
+  $("labRunSet").innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  $("labBack").href = "index.html?run=" + labEncode(P) + "#lab";
+}
 const LAB_PRESETS = [
   ["Tech-only", ["technical"], 0, false], ["Tech+Regime", ["technical", "regime"], 0, false],
   ["Tech+Regime+Fund", ["technical", "regime", "fundamentals"], 0, false], ["Regime+Fund", ["regime", "fundamentals"], 0, false],
@@ -887,7 +937,7 @@ function labMatch(P) {      // which published configuration, if any, these sett
 function labSyncControls() {
   const P = LAB.P, L = window.LAB_DATA;
   chips("labPresets", LAB_PRESETS.map(p => p[0]), k => labMatch(P) === LAB_PRESETS[k][0], k => {
-    const [, ag, b, ca] = LAB_PRESETS[k]; LAB.P = { ...labDefaults(), agents: [...ag], band: b ? L.defaults.band : 0, costAware: ca }; labSyncControls(); labGo();
+    const [, ag, b, ca] = LAB_PRESETS[k]; LAB.P = { ...labDefaults(), agents: [...ag], band: b ? L.defaults.band : 0, costAware: ca }; labSyncControls(); labStale(); sbDraw();
   });
   document.querySelectorAll("#labAgents input").forEach(c => { c.checked = P.agents.includes(c.value); });
   $("labVolScale").checked = P.volScaling; $("labBrake").checked = P.brake; $("labCostAware").checked = P.costAware;
@@ -898,12 +948,12 @@ function labSyncControls() {
   });
   $("labFrom").value = L.dates[P.d0].slice(0, 4); $("labTo").value = L.dates[P.d1].slice(0, 4);
 }
-function labStale() { $("labStatus").textContent = "Settings changed. Press Run backtest."; $("labRun").classList.add("primary"); }
+function labStale() { $("labStatus").textContent = "Press Run backtest: the results open on their own page."; $("labRun").classList.add("primary"); }
 function labGo() {
   const P = LAB.P, L = window.LAB_DATA;
-  if (!P.agents.length) { $("labStatus").textContent = "Pick at least one agent."; return; }
+  if (!P.agents.length) { $("labRunInfo").textContent = "No agent was selected. Go back and pick at least one."; return; }
   const t0 = performance.now(), R = labRun(P), ms = performance.now() - t0; LAB.R = R;
-  $("labStatus").textContent = `Ran ${(R.n * P.stocks.length).toLocaleString()} decisions over ${R.n.toLocaleString()} trading days in ${ms.toFixed(0)} ms, then a 2,000-draw paired block bootstrap against Buy&Hold.`;
+  $("labRunInfo").textContent = `Ran ${(R.n * P.stocks.length).toLocaleString()} decisions over ${R.n.toLocaleString()} trading days in ${ms.toFixed(0)} ms, then a 2,000-draw paired block bootstrap against Buy&Hold.`;
   const box = $("labTiles"); box.innerHTML = "";
   const tile = (k, v, n) => { const c = el("div", "card tile"); c.append(el("div", "k", esc(k)), el("div", "v", esc(v)), el("div", "n", esc(n))); box.append(c); };
   const m = R.me, b = R.bh;
@@ -931,8 +981,7 @@ function labGo() {
   LAB.chart = { dates: keep.map(i => L.dates[P.d0 + i]), series: [
     { name: "Buy&Hold", v: keep.map(i => b.curve[i]), dd: keep.map(i => b.ddSeries[i]) },
     { name: "Your configuration", v: keep.map(i => m.curve[i]), dd: keep.map(i => m.ddSeries[i]) }] };
-  labDrawCharts(); labTraceInit();
-  sbDraw();
+  labRunSummary(); labDrawCharts(); labTraceInit();
 }
 const LABCOL = ["var(--s1)", "var(--text)"];
 function labDrawCharts() {
@@ -1000,7 +1049,7 @@ function sbDraw() {
   $("sbNotes").innerHTML = `<div class="note risk"><b>Risk manager.</b> ${esc(notes.join("; "))}.</div>`;
 }
 function labInit() {
-  const L = window.LAB_DATA; LAB.P = labDefaults();
+  const L = window.LAB_DATA; LAB.P = labFromUrl() || labDefaults();
   $("labAgents").innerHTML = AGN.map(a => `<label><input type="checkbox" value="${a}"> ${a[0].toUpperCase() + a.slice(1)}</label>`).join("");
   $("labAgents").onchange = () => { LAB.P.agents = [...document.querySelectorAll("#labAgents input:checked")].map(c => c.value); labSyncControls(); labStale(); };
   $("labSliders").innerHTML = LAB_SL.map(([key, label, lo, hi, step]) => `<div class="sl"><span>${label}</span><input type="range" id="sl_${key}" min="${lo}" max="${hi}" step="${step}" aria-label="${label}"><output id="so_${key}"></output></div>`).join("");
@@ -1013,20 +1062,21 @@ function labInit() {
     LAB.P.d0 = L.dates.findIndex(d => d.slice(0, 4) === a); LAB.P.d1 = L.dates.length - 1 - [...L.dates].reverse().findIndex(d => d.slice(0, 4) === b); labSyncControls(); labStale();
   };
   $("labFrom").onchange = pick; $("labTo").onchange = pick;
-  $("labRun").onclick = labGo;
-  $("labReset").onclick = () => { LAB.P = labDefaults(); labSyncControls(); labGo(); };
+  $("labRun").onclick = labOpen;
+  $("labReset").onclick = () => { LAB.P = labDefaults(); labSyncControls(); labStale(); sbDraw(); };
   $("labTrSym").onchange = labTrace; $("labTrDay").oninput = labTrace;
-  sbBuild(); labSyncControls(); labGo(); LAB.ready = true;
+  sbBuild(); labSyncControls();
+  if (RUNPAGE) { document.title = "Backtest results · MTP Demo"; labGo(); } else { labStale(); sbDraw(); }
+  LAB.ready = true;
 }
 (function loadLab() {
   const sc = document.createElement("script"); sc.src = "data/lab.js"; sc.onload = labInit;
-  sc.onerror = () => { $("labStatus").textContent = "Could not load data/lab.js. Keep the data folder next to index.html."; };
+  sc.onerror = () => { $(RUNPAGE ? "labRunInfo" : "labStatus").textContent = "Could not load data/lab.js. Keep the data folder next to index.html."; };
   document.head.append(sc);
 })();
 
-drawResults(); drawCovid(); drawDeletion(); drawDecisive(); drawLabels(); drawLive(); drawPaper(); drawTables();
-loadExplorer(0);
-let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (X) drawStrip(); drawLines(); labDrawCharts(); }, 120); });
+if (!RUNPAGE) { drawResults(); drawCovid(); drawDeletion(); drawDecisive(); drawLabels(); drawLive(); drawPaper(); drawTables(); loadExplorer(0); }
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (RUNPAGE) { labDrawCharts(); return; } if (X) drawStrip(); drawLines(); }, 120); });
 </script>
 </body>
 </html>
