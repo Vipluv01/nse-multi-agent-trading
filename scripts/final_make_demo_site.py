@@ -9,6 +9,8 @@ to run a script to see them.
 
 Layout (results/final/demo/):
   index.html            the page, with all summary data inline
+  results.html          the same page in "run" mode: results of one lab backtest, settings
+                        passed in the query string by index.html's Run button
   data/explorer_N.js    recorded decisions for one configuration each, loaded
                         on demand through a <script> tag (works on file://)
 
@@ -456,7 +458,12 @@ def main() -> int:
     (out_dir / "data" / "lab.js").write_text(f"window.LAB_DATA={lab};\n")
 
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    (out_dir / "index.html").write_text(TEMPLATE.read_text().replace("/*__DATA__*/null", payload, 1))
+    page = TEMPLATE.read_text().replace("/*__DATA__*/null", payload, 1)
+    (out_dir / "index.html").write_text(page)
+    # The lab's results page is the same file in "run" mode: it shares every line of the
+    # backtest code with index.html, so the two can never compute different numbers.
+    assert page.count("<body>") == 1
+    (out_dir / "results.html").write_text(page.replace("<body>", '<body data-page="run">', 1))
     size = sum(p.stat().st_size for p in out_dir.rglob("*") if p.is_file()) / 1e6
     print(f"wrote {out_dir} ({size:.1f} MB, {total:,} decisions in {len(index)} configurations, {len(data['tables'])} tables)")
     return 0
